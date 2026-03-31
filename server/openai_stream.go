@@ -41,7 +41,11 @@ func consumeOpenAITextStream(body io.Reader, onSnapshot func(string) error) (str
 
 		builder.WriteString(delta)
 		if onSnapshot != nil {
-			if err := onSnapshot(strings.TrimSpace(builder.String())); err != nil {
+			snapshot := strings.TrimSpace(renderAssistantResponseParts(splitInlineReasoningSections(builder.String())))
+			if snapshot == "" {
+				snapshot = strings.TrimSpace(builder.String())
+			}
+			if err := onSnapshot(snapshot); err != nil {
 				return strings.TrimSpace(builder.String()), err
 			}
 		}
@@ -85,38 +89,41 @@ func extractStreamingDeltaText(raw []byte) (string, error) {
 func extractStreamChoiceText(choice map[string]any) string {
 	for _, key := range []string{"delta", "message"} {
 		if raw, ok := choice[key]; ok {
-			if text := extractStreamingContentText(raw); text != "" {
+			if text := extractPrimaryStreamingContentText(raw); text != "" {
 				return text
 			}
 		}
 	}
 	if raw, ok := choice["text"]; ok {
-		if text := extractStreamingContentText(raw); text != "" {
+		if text := extractPrimaryStreamingContentText(raw); text != "" {
 			return text
 		}
 	}
 	return ""
 }
 
-func extractStreamingContentText(value any) string {
+func extractPrimaryStreamingContentText(value any) string {
 	switch typed := value.(type) {
 	case string:
 		return typed
 	case map[string]any:
 		if content, ok := typed["content"]; ok {
-			return extractStreamingContentText(content)
+			return extractPrimaryStreamingContentText(content)
 		}
 		if text, ok := typed["text"]; ok {
-			return extractStreamingContentText(text)
+			return extractPrimaryStreamingContentText(text)
+		}
+		if outputText, ok := typed["output_text"]; ok {
+			return extractPrimaryStreamingContentText(outputText)
 		}
 	case []any:
 		parts := make([]string, 0, len(typed))
 		for _, item := range typed {
-			if text := extractStreamingContentText(item); text != "" {
+			if text := extractPrimaryStreamingContentText(item); text != "" {
 				parts = append(parts, text)
 			}
 		}
 		return strings.Join(parts, "")
 	}
-	return extractTextFromValue(value)
+	return ""
 }

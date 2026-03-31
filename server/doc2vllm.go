@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -83,8 +84,10 @@ type doc2vllmUsage struct {
 }
 
 type doc2vllmChoiceMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Role             string `json:"role"`
+	Content          any    `json:"content"`
+	ReasoningContent any    `json:"reasoning_content,omitempty"`
+	Reasoning        any    `json:"reasoning,omitempty"`
 }
 
 type doc2vllmChoice struct {
@@ -166,6 +169,17 @@ type doc2vllmResponseDebug struct {
 	Hint       string `json:"hint,omitempty"`
 	Body       string `json:"body,omitempty"`
 }
+
+type assistantResponseParts struct {
+	Answer    string
+	Reasoning string
+}
+
+var (
+	thinkTagPattern       = regexp.MustCompile(`(?is)^\s*<think>\s*(.*?)\s*</think>\s*(.*)$`)
+	reasoningTagPattern   = regexp.MustCompile(`(?is)^\s*<reasoning>\s*(.*?)\s*</reasoning>\s*(.*)$`)
+	reasoningBlockPattern = regexp.MustCompile(`(?is)^\s*(?:#+\s*)?(?:reasoning|thinking)\s*:?\s*(.*?)\s*(?:#+\s*)?(?:final\s+answer|answer)\s*:?\s*(.*)$`)
+)
 
 func (e *doc2vllmCallError) Error() string {
 	if e == nil {
@@ -866,13 +880,8 @@ func (p *Plugin) performDoc2VLLMStreamRequest(
 }
 
 func extractDoc2VLLMResponseText(response doc2vllmOCRResponse) string {
-	for _, choice := range response.Choices {
-		if value := strings.TrimSpace(choice.Text()); value != "" {
-			return value
-		}
-		if value := strings.TrimSpace(extractTextFromValue(choice.Message.Content)); value != "" {
-			return value
-		}
+	if rendered := strings.TrimSpace(renderAssistantResponseParts(extractDoc2VLLMResponseParts(response))); rendered != "" {
+		return rendered
 	}
 
 	pretty, err := json.MarshalIndent(response, "", "  ")
@@ -887,6 +896,202 @@ func (c doc2vllmChoice) Text() string {
 		return value
 	}
 	return ""
+}
+
+func extractDoc2VLLMResponseParts(response doc2vllmOCRResponse) assistantResponseParts {
+	for _, choice := range response.Choices {
+		parts := extractChoiceResponseParts(choice)
+		if strings.TrimSpace(parts.Answer) != "" || strings.TrimSpace(parts.Reasoning) != "" {
+			return parts
+		}
+	}
+	return assistantResponseParts{}
+}
+
+func extractChoiceResponseParts(choice doc2vllmChoice) assistantResponseParts {
+	parts := assistantResponseParts{
+		Answer:    strings.TrimSpace(extractNonReasoningTextFromValue(choice.Message.Content)),
+		Reasoning: strings.TrimSpace(extractReasoningTextFromValue(choice.Message.ReasoningContent)),
+	}
+	if parts.Reasoning == "" {
+		parts.Reasoning = strings.TrimSpace(extractReasoningTextFromValue(choice.Message.Reasoning))
+	}
+	if parts.Answer == "" {
+		parts.Answer = strings.TrimSpace(choice.Text())
+	}
+
+	inlineParts := splitInlineReasoningSections(parts.Answer)
+	if parts.Reasoning == "" {
+		parts.Reasoning = inlineParts.Reasoning
+	}
+	if inlineParts.Answer != "" {
+		parts.Answer = inlineParts.Answer
+	}
+
+	parts.Answer = strings.TrimSpace(stripLeadingReasoning(parts.Answer, parts.Reasoning))
+	if normalizeComparableText(parts.Answer) == normalizeComparableText(parts.Reasoning) {
+		parts.Reasoning = ""
+	}
+	return parts
+}
+
+func extractNonReasoningTextFromValue(value any) string {
+	candidates := make([]string, 0, 8)
+	collectTextCandidatesFiltered(value, &candidates, false)
+	return longestNonEmptyCandidate(candidates)
+}
+
+func extractReasoningTextFromValue(value any) string {
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text)
+	}
+	candidates := make([]string, 0, 8)
+	collectReasoningCandidates(value, &candidates)
+	return longestNonEmptyCandidate(candidates)
+}
+
+func collectTextCandidatesFiltered(value any, candidates *[]string, includeReasoning bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			lowerKey := strings.ToLower(strings.TrimSpace(key))
+			if isReasoningKey(lowerKey) {
+				if includeReasoning {
+					collectTextCandidatesFiltered(nested, candidates, true)
+				}
+				continue
+			}
+			if isLikelyTextKey(lowerKey) {
+				switch nestedValue := nested.(type) {
+				case string:
+					*candidates = append(*candidates, nestedValue)
+				case map[string]any, []any:
+					collectTextCandidatesFiltered(nestedValue, candidates, includeReasoning)
+				}
+				continue
+			}
+			collectTextCandidatesFiltered(nested, candidates, includeReasoning)
+		}
+	case []any:
+		for _, item := range typed {
+			collectTextCandidatesFiltered(item, candidates, includeReasoning)
+		}
+	case string:
+		if strings.TrimSpace(typed) != "" {
+			*candidates = append(*candidates, typed)
+		}
+	}
+}
+
+func collectReasoningCandidates(value any, candidates *[]string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			lowerKey := strings.ToLower(strings.TrimSpace(key))
+			if isReasoningKey(lowerKey) {
+				switch nestedValue := nested.(type) {
+				case string:
+					*candidates = append(*candidates, nestedValue)
+				case map[string]any, []any:
+					collectTextCandidatesFiltered(nestedValue, candidates, true)
+				}
+			}
+			collectReasoningCandidates(nested, candidates)
+		}
+	case []any:
+		for _, item := range typed {
+			collectReasoningCandidates(item, candidates)
+		}
+	case string:
+		if strings.TrimSpace(typed) != "" {
+			inlineParts := splitInlineReasoningSections(typed)
+			if inlineParts.Reasoning != "" {
+				*candidates = append(*candidates, inlineParts.Reasoning)
+			}
+		}
+	}
+}
+
+func longestNonEmptyCandidate(candidates []string) string {
+	best := ""
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if len(candidate) > len(best) {
+			best = candidate
+		}
+	}
+	return best
+}
+
+func isReasoningKey(key string) bool {
+	return strings.Contains(key, "reasoning") ||
+		strings.Contains(key, "thinking") ||
+		strings.Contains(key, "thought")
+}
+
+func splitInlineReasoningSections(text string) assistantResponseParts {
+	text = strings.TrimSpace(strings.ToValidUTF8(text, ""))
+	if text == "" {
+		return assistantResponseParts{}
+	}
+
+	for _, pattern := range []*regexp.Regexp{thinkTagPattern, reasoningTagPattern, reasoningBlockPattern} {
+		matches := pattern.FindStringSubmatch(text)
+		if len(matches) == 3 {
+			return assistantResponseParts{
+				Reasoning: strings.TrimSpace(matches[1]),
+				Answer:    strings.TrimSpace(matches[2]),
+			}
+		}
+	}
+
+	return assistantResponseParts{Answer: text}
+}
+
+func stripLeadingReasoning(answer, reasoning string) string {
+	answer = strings.TrimSpace(answer)
+	reasoning = strings.TrimSpace(reasoning)
+	if answer == "" || reasoning == "" {
+		return answer
+	}
+	if strings.HasPrefix(answer, reasoning) {
+		return strings.TrimSpace(answer[len(reasoning):])
+	}
+	return answer
+}
+
+func normalizeComparableText(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	return value
+}
+
+func renderAssistantResponseParts(parts assistantResponseParts) string {
+	answer := strings.TrimSpace(parts.Answer)
+	reasoning := strings.TrimSpace(parts.Reasoning)
+
+	switch {
+	case answer == "" && reasoning == "":
+		return ""
+	case answer == "":
+		return strings.TrimSpace("**Reasoning**\n\n" + reasoning)
+	case reasoning == "":
+		return answer
+	default:
+		return strings.TrimSpace(strings.Join([]string{
+			"**Answer**",
+			"",
+			answer,
+			"",
+			"**Reasoning**",
+			"",
+			reasoning,
+		}, "\n"))
+	}
 }
 
 func (p *Plugin) testDoc2VLLMConnection(ctx context.Context, cfg *runtimeConfiguration, botID string) (*doc2vllmConnectionStatus, error) {
@@ -1004,19 +1209,7 @@ func extractTextFromBody(body []byte) string {
 func extractTextFromValue(value any) string {
 	candidates := make([]string, 0, 8)
 	collectTextCandidates(value, &candidates)
-
-	best := ""
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			continue
-		}
-		if len(candidate) > len(best) {
-			best = candidate
-		}
-	}
-
-	return best
+	return longestNonEmptyCandidate(candidates)
 }
 
 func collectTextCandidates(value any, candidates *[]string) {
