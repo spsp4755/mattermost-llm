@@ -1,0 +1,32 @@
+{
+    "id": "com.mattermost.vllm-llm",
+    "name": "Mattermost LLM",
+    "version": "0.1.0",
+    "description": "Generic Mattermost plugin for OpenAI-compatible text, multimodal, and OCR-capable LLM endpoints.",
+    "homepage_url": "https://github.com/spsp4755/mattermost-llm",
+    "support_url": "https://github.com/spsp4755/mattermost-llm",
+    "icon_path": "assets/starter-template-icon.svg",
+    "min_server_version": "10.0.0",
+    "server": {
+        "executables": {
+            "linux-amd64": "server/dist/plugin-linux-amd64",
+            "linux-arm64": "server/dist/plugin-linux-arm64",
+            "darwin-amd64": "server/dist/plugin-darwin-amd64",
+            "darwin-arm64": "server/dist/plugin-darwin-arm64",
+            "windows-amd64": "server/dist/plugin-windows-amd64.exe"
+        }
+    },
+    "webapp": {
+        "bundle_path": "webapp/dist/main.js"
+    },
+    "settings_schema": {
+        "header": "",
+        "footer": "",
+        "settings": [
+            {
+                "key": "Config",
+                "type": "custom"
+            }
+        ]
+    }
+}

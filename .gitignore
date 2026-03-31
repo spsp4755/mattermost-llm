@@ -1,0 +1,28 @@
+bin/
+build/bin/
+dist/
+package-temp/
+server/dist/
+webapp/dist/
+webapp/src/manifest.ts
+server/manifest.go
+server.exe
+.codex-cache/
+.hf-cache/
+artifacts/ocr-smoke/
+.gocache/
+.gomodcache/
+artifacts/
+__pycache__/
+*.pyc
+*.bak.codex
+codex_test.tmp
+
+# Mac
+.DS_Store
+
+# Jetbrains
+.idea/
+
+# VS Code
+.vscode
