@@ -68,6 +68,30 @@ type successDebugView struct {
 
 const doc2vllmBotPostType = "custom_doc2vllm_bot"
 
+func buildRequestIntakeProgress(hasPrompt bool, fileCount int) (string, string) {
+	switch {
+	case fileCount > 0 && hasPrompt:
+		return "입력 확인", "첨부 파일과 질문을 확인하고 있습니다."
+	case fileCount > 0:
+		return "첨부 파일 확인", "첨부 파일을 확인하고 있습니다."
+	case hasPrompt:
+		return "질문 확인", "텍스트 요청을 확인하고 있습니다."
+	default:
+		return "입력 확인", "요청 내용을 확인하고 있습니다."
+	}
+}
+
+func buildAttachmentPreparationProgress(hasPrompt bool, attachmentCount int) (string, string) {
+	switch {
+	case attachmentCount > 0 && hasPrompt:
+		return "첨부 파일 준비", fmt.Sprintf("첨부 파일 %d개와 질문을 확인했고, 분석 준비를 시작합니다.", attachmentCount)
+	case attachmentCount > 0:
+		return "첨부 파일 준비", fmt.Sprintf("첨부 파일 %d개를 확인했고, 분석 준비를 시작합니다.", attachmentCount)
+	default:
+		return "첨부 파일 준비", "첨부 파일 분석 준비를 시작합니다."
+	}
+}
+
 func (p *Plugin) executeBotAndPost(ctx context.Context, request BotRunRequest) (*BotRunResult, error) {
 	startedAt := time.Now()
 	correlationID := uuid.NewString()
@@ -111,7 +135,7 @@ func (p *Plugin) executeBotAndPost(ctx context.Context, request BotRunRequest) (
 	}
 
 	prompt := strings.TrimSpace(request.Prompt)
-	if len(prompt) > cfg.MaxInputLength {
+	if cfg.MaxInputLength > 0 && len(prompt) > cfg.MaxInputLength {
 		return nil, fmt.Errorf("message exceeds the maximum input length of %d characters", cfg.MaxInputLength)
 	}
 
@@ -119,8 +143,10 @@ func (p *Plugin) executeBotAndPost(ctx context.Context, request BotRunRequest) (
 	if progressErr != nil {
 		p.API.LogWarn("Failed to create Doc2VLLM progress post", "error", progressErr, "correlation_id", correlationID)
 	}
+	stage, detail := buildRequestIntakeProgress(prompt != "", len(request.FileIDs))
 	_ = p.updateProgressPost(progress, "첨부 파일 확인", "첨부 파일과 프롬프트를 확인하고 있습니다.", "", startedAt, true)
 
+	_ = p.updateProgressPost(progress, stage, detail, "", startedAt, true)
 	attachments, err := p.collectBotAttachments(request.FileIDs, request.ChannelID)
 	if err != nil {
 		failure := describeExecutionFailure(err, true, time.Since(startedAt))
@@ -159,7 +185,9 @@ func (p *Plugin) executeBotAndPost(ctx context.Context, request BotRunRequest) (
 		}
 		return p.executeInitialTextConversation(ctx, cfg, request, *bot, account, channel, progress, startedAt, correlationID)
 	}
+	stage, detail = buildAttachmentPreparationProgress(prompt != "", len(attachments))
 	_ = p.updateProgressPost(progress, "문서 전처리", fmt.Sprintf("첨부 파일 %d개를 확인했고, 문서 전처리를 시작합니다.", len(attachments)), "", startedAt, true)
+	_ = p.updateProgressPost(progress, stage, detail, "", startedAt, true)
 	preparedInputs, processingFailures := p.prepareOCRInputs(ctx, cfg, attachments)
 	if len(preparedInputs) == 0 && len(processingFailures) == 0 {
 		err := fmt.Errorf("attach at least one image, PDF, DOCX, XLSX, or PPTX file before asking @%s", bot.Username)
@@ -468,6 +496,7 @@ func (p *Plugin) executeInitialTextConversation(
 	response := doc2vllmOCRResponse{}
 	requestDebug := doc2vllmRequestDebug{}
 	var invokeErr error
+	_ = p.updateProgressPost(progress, "질문 분석", "텍스트 요청을 분석하고 답변 생성을 준비하고 있습니다.", "", startedAt, true)
 	if shouldUseDoc2VLLMStreaming(cfg, bot) {
 		response, requestDebug, apiDuration, _, invokeErr = p.invokeDoc2VLLMConversationStream(
 			ctx,
@@ -478,7 +507,7 @@ func (p *Plugin) executeInitialTextConversation(
 			effectivePrompt,
 			correlationID,
 			func(content string) error {
-				return p.updateProgressPost(progress, "text_generation", "Generating a response.", content, startedAt, false)
+				return p.updateProgressPost(progress, "답변 생성 중", "텍스트 요청에 대한 답변을 생성하고 있습니다.", content, startedAt, false)
 			},
 		)
 		if invokeErr != nil {

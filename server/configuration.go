@@ -13,8 +13,8 @@ import (
 const (
 	defaultAuthMode            = "bearer"
 	defaultTimeoutSeconds      = 30
-	defaultMaxInputLength      = 4000
-	defaultMaxOutputLength     = 8000
+	defaultMaxInputLength      = 0
+	defaultMaxOutputLength     = 0
 	defaultEnableStreaming     = true
 	defaultStreamingUpdateMS   = 800
 	defaultDoc2VLLMEndpointURL = "http://localhost:8000/v1/chat/completions"
@@ -131,8 +131,8 @@ func (c storedPluginConfig) normalize() (*runtimeConfiguration, error) {
 		AuthToken:         strings.TrimSpace(c.Service.AuthToken),
 		EnableStreaming:   normalizeStreamingEnabled(c.Runtime),
 		StreamingUpdateMS: positiveOrDefault(c.Runtime.StreamingUpdateMS, defaultStreamingUpdateMS),
-		MaxInputLength:    positiveOrDefault(c.Runtime.MaxInputLength, defaultMaxInputLength),
-		MaxOutputLength:   positiveOrDefault(c.Runtime.MaxOutputLength, defaultMaxOutputLength),
+		MaxInputLength:    normalizeOptionalPositive(c.Runtime.MaxInputLength),
+		MaxOutputLength:   normalizeOptionalPositive(c.Runtime.MaxOutputLength),
 		PDFRasterDPI:      positiveOrDefault(c.Runtime.PDFRasterDPI, defaultPDFRasterDPI),
 		MaxPDFPages:       positiveOrDefault(c.Runtime.MaxPDFPages, defaultMaxPDFPages),
 		MaskSensitiveData: c.Runtime.MaskSensitiveData,
@@ -254,6 +254,13 @@ func canonicalAllowHost(raw string) string {
 func positiveOrDefault(value, fallback int) int {
 	if value <= 0 {
 		return fallback
+	}
+	return value
+}
+
+func normalizeOptionalPositive(value int) int {
+	if value <= 0 {
+		return 0
 	}
 	return value
 }

@@ -138,7 +138,7 @@ type DraftBot = {
     output_mode: string;
     ocr_prompt: string;
     temperature: number;
-    max_tokens: number;
+    max_tokens: OptionalPositiveNumber;
     top_p: number;
     repetition_penalty: number;
     presence_penalty: number;
@@ -155,9 +155,11 @@ type DraftBot = {
     allowed_users: string[];
 };
 
+type OptionalPositiveNumber = number | '';
+
 type DraftConfig = {
     service: {base_url: string; auth_mode: string; auth_token: string; allow_hosts: string};
-    runtime: {default_timeout_seconds: number; enable_streaming: boolean; streaming_update_ms: number; max_input_length: number; max_output_length: number; pdf_raster_dpi: number; max_pdf_pages: number; mask_sensitive_data: boolean; enable_debug_logs: boolean; enable_usage_logs: boolean};
+    runtime: {default_timeout_seconds: number; enable_streaming: boolean; streaming_update_ms: number; max_input_length: OptionalPositiveNumber; max_output_length: OptionalPositiveNumber; pdf_raster_dpi: number; max_pdf_pages: number; mask_sensitive_data: boolean; enable_debug_logs: boolean; enable_usage_logs: boolean};
     bots: DraftBot[];
 };
 
@@ -336,10 +338,10 @@ export default function ConfigSetting(props: Props) {
                         <div style={row3}>
                             <Field label={T.timeout} help={T.directInput}><input disabled={disabled} type='number' min={1} style={field} value={String(config.runtime.default_timeout_seconds)} onChange={(e) => updateRuntime({default_timeout_seconds: num(e.target.value, 30)})}/></Field>
                             <Field label={T.streamingUpdateMs} help={T.directInput}><input disabled={disabled} type='number' min={100} step={100} style={field} value={String(config.runtime.streaming_update_ms)} onChange={(e) => updateRuntime({streaming_update_ms: num(e.target.value, 800)})}/></Field>
-                            <Field label={T.maxInput} help={T.directInput}><input disabled={disabled} type='number' min={1} style={field} value={String(config.runtime.max_input_length)} onChange={(e) => updateRuntime({max_input_length: num(e.target.value, 4000)})}/></Field>
+                            <Field label={T.maxInput} help={'비워두면 플러그인 제한 없이 모델 서버의 입력 한도를 그대로 따릅니다.'}><input disabled={disabled} type='number' min={1} style={field} value={optionalPositiveInputValue(config.runtime.max_input_length)} placeholder={'auto'} onChange={(e) => updateRuntime({max_input_length: optionalPositive(e.target.value)})}/></Field>
                         </div>
                         <div style={row2}>
-                            <Field label={T.maxOutput} help={T.directInput}><input disabled={disabled} type='number' min={1} style={field} value={String(config.runtime.max_output_length)} onChange={(e) => updateRuntime({max_output_length: num(e.target.value, 8000)})}/></Field>
+                            <Field label={T.maxOutput} help={'비워두면 플러그인에서 응답을 자르지 않고 모델 서버의 기본 출력을 그대로 사용합니다.'}><input disabled={disabled} type='number' min={1} style={field} value={optionalPositiveInputValue(config.runtime.max_output_length)} placeholder={'auto'} onChange={(e) => updateRuntime({max_output_length: optionalPositive(e.target.value)})}/></Field>
                             <div style={{display: 'flex', flexDirection: 'column', justifyContent: 'flex-end'}}>
                                 <label><input disabled={disabled} type='checkbox' checked={config.runtime.enable_streaming} onChange={(e) => updateRuntime({enable_streaming: e.target.checked})}/>{` ${T.enableStreaming}`}</label>
                                 <span style={note}>{T.enableStreamingHelp}</span>
@@ -372,7 +374,7 @@ export default function ConfigSetting(props: Props) {
                         <button key={item.local_id} type='button' onClick={() => setSelected(selectionKey(item))} style={{...botButton, borderColor: bot?.local_id === item.local_id ? 'rgba(var(--button-bg-rgb),.45)' : 'rgba(var(--center-channel-color-rgb),.08)'}}>
                                 <strong>{item.display_name || '@new-bot'}</strong>
                                 <div>{`@${item.username || 'username'}`}</div>
-                                <div style={note}>{`${item.model || defaultModel} | ${modeLabel(item.mode)} | ${item.output_mode} | temp=${item.temperature} | max_tokens=${item.max_tokens}`}</div>
+                                <div style={note}>{`${item.model || defaultModel} | ${modeLabel(item.mode)} | ${item.output_mode} | temp=${item.temperature} | max_tokens=${formatOptionalPositive(item.max_tokens, 'auto')}`}</div>
                             </button>
                         ))}
                     </div>
@@ -398,6 +400,7 @@ export default function ConfigSetting(props: Props) {
                                     <div style={note}>{`${T.effectiveUrl}: ${effectiveBotBaseURL(config, bot)}`}</div>
                                     <div style={note}>{`${T.effectiveAuth}: ${effectiveBotAuthMode(config, bot)}`}</div>
                                     <div style={note}>{`${T.effectiveModel}: ${effectiveBotModel(bot)}`}</div>
+                                    <div style={note}>{`실제 max_tokens: ${formatOptionalPositive(bot.max_tokens, 'model default')}`}</div>
                                     <div style={note}>{`${T.effectiveRefiner}: ${effectiveBotRefiner(bot)}`}</div>
                                 </div>
                                 <div style={row3}>
@@ -420,7 +423,7 @@ export default function ConfigSetting(props: Props) {
                                 <Field label={T.systemPrompt}><textarea disabled={disabled} style={{...field, minHeight: 120}} value={bot.ocr_prompt} placeholder={defaultAttachmentInstruction(bot.mode)} onChange={(e) => updateBot(bot.local_id, {ocr_prompt: e.target.value})}/></Field>
                                 <div style={row3}>
                                     <Field label={'temperature'} help={T.directInput}><input disabled={disabled} type='number' min={0} max={2} step='0.1' style={field} value={String(bot.temperature)} onChange={(e) => updateBot(bot.local_id, {temperature: numRange(e.target.value, 0, 0, 2)})}/></Field>
-                                    <Field label={'max_tokens'} help={T.directInput}><input disabled={disabled} type='number' min={1} style={field} value={String(bot.max_tokens)} onChange={(e) => updateBot(bot.local_id, {max_tokens: num(e.target.value, 1024)})}/></Field>
+                                    <Field label={'max_tokens'} help={'비워두면 요청에서 max_tokens를 보내지 않고, 서빙 중인 모델의 기본값을 그대로 사용합니다.'}><input disabled={disabled} type='number' min={1} style={field} value={optionalPositiveInputValue(bot.max_tokens)} placeholder={'model default'} onChange={(e) => updateBot(bot.local_id, {max_tokens: optionalPositive(e.target.value)})}/></Field>
                                     <Field label={'top_p'} help={T.directInput}><input disabled={disabled} type='number' min={0.1} max={1} step='0.1' style={field} value={String(bot.top_p)} onChange={(e) => updateBot(bot.local_id, {top_p: numRange(e.target.value, 1, 0.1, 1)})}/></Field>
                                 </div>
                                 <div style={row3}>
@@ -545,7 +548,7 @@ function ManagedBotRow(props: {item: ManagedBotStatus}) {
 function createDefaultConfig(): DraftConfig {
     return {
         service: {base_url: defaultURL, auth_mode: 'bearer', auth_token: '', allow_hosts: ''},
-        runtime: {default_timeout_seconds: 30, enable_streaming: true, streaming_update_ms: 800, max_input_length: 4000, max_output_length: 8000, pdf_raster_dpi: 200, max_pdf_pages: 20, mask_sensitive_data: false, enable_debug_logs: false, enable_usage_logs: true},
+        runtime: {default_timeout_seconds: 30, enable_streaming: true, streaming_update_ms: 800, max_input_length: '', max_output_length: '', pdf_raster_dpi: 200, max_pdf_pages: 20, mask_sensitive_data: false, enable_debug_logs: false, enable_usage_logs: true},
         bots: [],
     };
 }
@@ -629,7 +632,7 @@ export function normalizeConfig(value?: AdminPluginConfig): DraftConfig {
         auth_token: text(value.service?.auth_token),
         allow_hosts: value.service?.allow_hosts == null ? '' : text(value.service?.allow_hosts),
     };
-    next.runtime = {default_timeout_seconds: num(value.runtime?.default_timeout_seconds, 30), enable_streaming: value.runtime?.enable_streaming !== false || !value.runtime?.streaming_update_ms, streaming_update_ms: num(value.runtime?.streaming_update_ms, 800), max_input_length: num(value.runtime?.max_input_length, 4000), max_output_length: num(value.runtime?.max_output_length, 8000), pdf_raster_dpi: num(value.runtime?.pdf_raster_dpi, 200), max_pdf_pages: num(value.runtime?.max_pdf_pages, 20), mask_sensitive_data: Boolean(value.runtime?.mask_sensitive_data), enable_debug_logs: Boolean(value.runtime?.enable_debug_logs), enable_usage_logs: value.runtime?.enable_usage_logs !== false};
+    next.runtime = {default_timeout_seconds: num(value.runtime?.default_timeout_seconds, 30), enable_streaming: value.runtime?.enable_streaming !== false || !value.runtime?.streaming_update_ms, streaming_update_ms: num(value.runtime?.streaming_update_ms, 800), max_input_length: optionalPositive(value.runtime?.max_input_length), max_output_length: optionalPositive(value.runtime?.max_output_length), pdf_raster_dpi: num(value.runtime?.pdf_raster_dpi, 200), max_pdf_pages: num(value.runtime?.max_pdf_pages, 20), mask_sensitive_data: Boolean(value.runtime?.mask_sensitive_data), enable_debug_logs: Boolean(value.runtime?.enable_debug_logs), enable_usage_logs: value.runtime?.enable_usage_logs !== false};
     next.bots = Array.isArray(value.bots) ? value.bots.map((item, index) => normalizeBot(item, index, next.runtime.mask_sensitive_data)) : [];
     return next;
 }
@@ -637,7 +640,7 @@ export function normalizeConfig(value?: AdminPluginConfig): DraftConfig {
 export function buildConfig(config: DraftConfig): AdminPluginConfig {
     return {
         service: {base_url: text(config.service.base_url), auth_mode: auth(config.service.auth_mode), auth_token: text(config.service.auth_token), allow_hosts: text(config.service.allow_hosts)},
-        runtime: {default_timeout_seconds: num(config.runtime.default_timeout_seconds, 30), enable_streaming: Boolean(config.runtime.enable_streaming), streaming_update_ms: num(config.runtime.streaming_update_ms, 800), max_input_length: num(config.runtime.max_input_length, 4000), max_output_length: num(config.runtime.max_output_length, 8000), pdf_raster_dpi: num(config.runtime.pdf_raster_dpi, 200), max_pdf_pages: num(config.runtime.max_pdf_pages, 20), mask_sensitive_data: Boolean(config.runtime.mask_sensitive_data), enable_debug_logs: Boolean(config.runtime.enable_debug_logs), enable_usage_logs: Boolean(config.runtime.enable_usage_logs)},
+        runtime: {default_timeout_seconds: num(config.runtime.default_timeout_seconds, 30), enable_streaming: Boolean(config.runtime.enable_streaming), streaming_update_ms: num(config.runtime.streaming_update_ms, 800), max_input_length: optionalPositiveValue(config.runtime.max_input_length), max_output_length: optionalPositiveValue(config.runtime.max_output_length), pdf_raster_dpi: num(config.runtime.pdf_raster_dpi, 200), max_pdf_pages: num(config.runtime.max_pdf_pages, 20), mask_sensitive_data: Boolean(config.runtime.mask_sensitive_data), enable_debug_logs: Boolean(config.runtime.enable_debug_logs), enable_usage_logs: Boolean(config.runtime.enable_usage_logs)},
         bots: config.bots.map((item) => ({
             id: idValue(item.bot_id || item.username, item.local_id),
             username: user(item.username),
@@ -651,7 +654,7 @@ export function buildConfig(config: DraftConfig): AdminPluginConfig {
             output_mode: text(item.output_mode) || 'markdown',
             ocr_prompt: text(item.ocr_prompt),
             temperature: numRange(item.temperature, 0, 0, 2),
-            max_tokens: num(item.max_tokens, 1024),
+            max_tokens: optionalPositiveValue(item.max_tokens),
             top_p: numRange(item.top_p, 1, 0.1, 1),
             repetition_penalty: numRange(item.repetition_penalty, 1, 0.1, 2),
             presence_penalty: numRange(item.presence_penalty, 0, -2, 2),
@@ -673,7 +676,7 @@ export function buildConfig(config: DraftConfig): AdminPluginConfig {
 function normalizeBot(item: Partial<BotDefinition>, index: number, defaultMaskSensitiveData: boolean): DraftBot {
     const local = text(item.id) || id(`bot-${index}`);
     const username = user(text(item.username));
-    return {local_id: local, bot_id: idValue(text(item.id) || username, local), username, display_name: text(item.display_name), description: text(item.description), base_url: text(item.base_url), auth_mode: botAuth(text(item.auth_mode)), auth_token: text(item.auth_token), model: text(item.model), mode: normalizeMode(item.mode), output_mode: text(item.output_mode) || 'markdown', ocr_prompt: text(item.ocr_prompt), temperature: numRange(item.temperature, 0, 0, 2), max_tokens: num(item.max_tokens, 1024), top_p: numRange(item.top_p, 1, 0.1, 1), repetition_penalty: numRange(item.repetition_penalty, 1, 0.1, 2), presence_penalty: numRange(item.presence_penalty, 0, -2, 2), frequency_penalty: numRange(item.frequency_penalty, 0, -2, 2), extra_request_json: text(item.extra_request_json), mask_sensitive_data: typeof item.mask_sensitive_data === 'boolean' ? item.mask_sensitive_data : defaultMaskSensitiveData, vllm_base_url: text(item.vllm_base_url), vllm_api_key: text(item.vllm_api_key), vllm_model: text(item.vllm_model), vllm_prompt: text(item.vllm_prompt), vllm_scope: botScope(item.vllm_scope), allowed_teams: Array.isArray(item.allowed_teams) ? split(item.allowed_teams.join(','), true) : [], allowed_channels: Array.isArray(item.allowed_channels) ? split(item.allowed_channels.join(','), true) : [], allowed_users: Array.isArray(item.allowed_users) ? split(item.allowed_users.join(','), true) : []};
+    return {local_id: local, bot_id: idValue(text(item.id) || username, local), username, display_name: text(item.display_name), description: text(item.description), base_url: text(item.base_url), auth_mode: botAuth(text(item.auth_mode)), auth_token: text(item.auth_token), model: text(item.model), mode: normalizeMode(item.mode), output_mode: text(item.output_mode) || 'markdown', ocr_prompt: text(item.ocr_prompt), temperature: numRange(item.temperature, 0, 0, 2), max_tokens: optionalPositive(item.max_tokens), top_p: numRange(item.top_p, 1, 0.1, 1), repetition_penalty: numRange(item.repetition_penalty, 1, 0.1, 2), presence_penalty: numRange(item.presence_penalty, 0, -2, 2), frequency_penalty: numRange(item.frequency_penalty, 0, -2, 2), extra_request_json: text(item.extra_request_json), mask_sensitive_data: typeof item.mask_sensitive_data === 'boolean' ? item.mask_sensitive_data : defaultMaskSensitiveData, vllm_base_url: text(item.vllm_base_url), vllm_api_key: text(item.vllm_api_key), vllm_model: text(item.vllm_model), vllm_prompt: text(item.vllm_prompt), vllm_scope: botScope(item.vllm_scope), allowed_teams: Array.isArray(item.allowed_teams) ? split(item.allowed_teams.join(','), true) : [], allowed_channels: Array.isArray(item.allowed_channels) ? split(item.allowed_channels.join(','), true) : [], allowed_users: Array.isArray(item.allowed_users) ? split(item.allowed_users.join(','), true) : []};
 }
 
 function effectiveBotBaseURL(config: DraftConfig, bot: DraftBot): string {
@@ -769,7 +772,7 @@ function renderConnectionStatus(status: ConnectionStatus): string {
 function emptyBot(existingBots: DraftBot[], defaultMaskSensitiveData: boolean): DraftBot {
     const identity = nextBotIdentity(existingBots);
     const local = id('bot');
-    return {local_id: local, bot_id: identity.id, username: '', display_name: '', description: '', base_url: '', auth_mode: '', auth_token: '', model: '', mode: 'chat', output_mode: 'markdown', ocr_prompt: '', temperature: 0, max_tokens: 2048, top_p: 1, repetition_penalty: 1, presence_penalty: 0, frequency_penalty: 0, extra_request_json: '', mask_sensitive_data: defaultMaskSensitiveData, vllm_base_url: '', vllm_api_key: '', vllm_model: '', vllm_prompt: '', vllm_scope: 'postprocess', allowed_teams: [], allowed_channels: [], allowed_users: []};
+    return {local_id: local, bot_id: identity.id, username: '', display_name: '', description: '', base_url: '', auth_mode: '', auth_token: '', model: '', mode: 'chat', output_mode: 'markdown', ocr_prompt: '', temperature: 0, max_tokens: '', top_p: 1, repetition_penalty: 1, presence_penalty: 0, frequency_penalty: 0, extra_request_json: '', mask_sensitive_data: defaultMaskSensitiveData, vllm_base_url: '', vllm_api_key: '', vllm_model: '', vllm_prompt: '', vllm_scope: 'postprocess', allowed_teams: [], allowed_channels: [], allowed_users: []};
 }
 
 function nextBotIdentity(existingBots: DraftBot[], start = 1): {id: string; username: string; display_name: string} {
@@ -828,6 +831,32 @@ function serialize(value: unknown): string {
 
 function text(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
+}
+
+function optionalPositive(value: unknown): OptionalPositiveNumber {
+    if (value == null || value === '') {
+        return '';
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return '';
+    }
+    return Math.round(parsed);
+}
+
+function optionalPositiveValue(value: OptionalPositiveNumber): number {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        return 0;
+    }
+    return Math.round(value);
+}
+
+function optionalPositiveInputValue(value: OptionalPositiveNumber): string {
+    return optionalPositiveValue(value) > 0 ? String(optionalPositiveValue(value)) : '';
+}
+
+function formatOptionalPositive(value: OptionalPositiveNumber, fallback: string): string {
+    return optionalPositiveValue(value) > 0 ? String(optionalPositiveValue(value)) : fallback;
 }
 
 function num(value: unknown, fallback: number): number {

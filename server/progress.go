@@ -51,7 +51,7 @@ func (p *Plugin) newBotProgressPost(channel *model.Channel, rootID string, accou
 
 	initialMessage := buildBotProgressMessage(
 		"\uc694\uccad \uc811\uc218",
-		"\ucca8\ubd80 \ud30c\uc77c\uacfc \uc785\ub825 \ub0b4\uc6a9\uc744 \ud655\uc778\ud558\uace0 \uc788\uc2b5\ub2c8\ub2e4.",
+		"\uc694\uccad \ub0b4\uc6a9\uc744 \ud655\uc778\ud558\uace0 \uc788\uc2b5\ub2c8\ub2e4.",
 		"",
 		correlationID,
 		time.Since(startedAt),

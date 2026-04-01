@@ -40,7 +40,7 @@ func TestParseBotDefinitionsAutoAssignsIDFromUsername(t *testing.T) {
 	require.Equal(t, "summary-bot", bots[0].ID)
 	require.Equal(t, defaultDoc2VLLMModel, bots[0].Model)
 	require.Equal(t, defaultOutputMode, bots[0].OutputMode)
-	require.Equal(t, defaultDoc2VLLMMaxTokens, bots[0].MaxTokens)
+	require.Zero(t, bots[0].MaxTokens)
 	require.Equal(t, defaultDoc2VLLMTopP, bots[0].TopP)
 }
 
@@ -89,6 +89,8 @@ func TestConfigurationGetStoredPluginConfigDefaultsWhenEmpty(t *testing.T) {
 	require.Equal(t, defaultTimeoutSeconds, stored.Runtime.DefaultTimeoutSeconds)
 	require.True(t, normalizeStreamingEnabled(stored.Runtime))
 	require.Equal(t, defaultStreamingUpdateMS, positiveOrDefault(stored.Runtime.StreamingUpdateMS, defaultStreamingUpdateMS))
+	require.Zero(t, stored.Runtime.MaxInputLength)
+	require.Zero(t, stored.Runtime.MaxOutputLength)
 	require.Equal(t, defaultPDFRasterDPI, stored.Runtime.PDFRasterDPI)
 	require.Equal(t, defaultMaxPDFPages, stored.Runtime.MaxPDFPages)
 	require.True(t, stored.Runtime.EnableUsageLogs)
@@ -166,6 +168,44 @@ func TestBuildDoc2VLLMRequestBodyIncludesStream(t *testing.T) {
 	}, BotDefinition{})
 	require.NoError(t, err)
 	require.Equal(t, true, body["stream"])
+}
+
+func TestBuildDoc2VLLMRequestBodyOmitsMaxTokensWhenUnset(t *testing.T) {
+	body, err := buildDoc2VLLMRequestBody(doc2vllmChatRequest{
+		Model: "doc2vllm-ocr",
+		Messages: []doc2vllmMessage{{
+			Role:    "user",
+			Content: "hello",
+		}},
+		Temperature: 0,
+		TopP:        1,
+	}, BotDefinition{})
+	require.NoError(t, err)
+	_, ok := body["max_tokens"]
+	require.False(t, ok)
+}
+
+func TestBuildDoc2VLLMChatRequestUsesModelDefaultMaxTokensWhenUnset(t *testing.T) {
+	bot, err := (BotDefinition{
+		Username: "chat-bot",
+		Model:    "Qwen/Qwen2.5-7B-Instruct",
+		Mode:     "chat",
+	}).normalize()
+	require.NoError(t, err)
+
+	requestPayload, requestDebug, _, err := buildDoc2VLLMChatRequest(
+		doc2vllmServiceConfig{BaseURL: "http://localhost:8000/v1/chat/completions", AuthMode: "bearer"},
+		bot,
+		nil,
+		"Summarize this thread.",
+		"",
+		nil,
+		"corr-chat-auto",
+	)
+	require.NoError(t, err)
+	require.Zero(t, requestPayload.MaxTokens)
+	require.Zero(t, requestDebug.MaxTokens)
+	require.Equal(t, "model_default", requestDebug.MaxTokensSource)
 }
 
 func TestShouldUseDoc2VLLMStreamingDisablesMultimodalBots(t *testing.T) {

@@ -151,6 +151,31 @@ describe('loadConfig', () => {
         expect(built.bots[0].model).toBe('');
     });
 
+    test('keeps optional token and length limits blank in the editor and stores them as auto', () => {
+        const config = normalizeConfig({
+            ...draftConfig,
+            runtime: {
+                ...draftConfig.runtime,
+                max_input_length: 0,
+                max_output_length: 0,
+            },
+            bots: [{
+                ...draftConfig.bots[0],
+                max_tokens: 0,
+            }],
+        });
+
+        expect(config.runtime.max_input_length).toBe('');
+        expect(config.runtime.max_output_length).toBe('');
+        expect(config.bots[0].max_tokens).toBe('');
+
+        const built = buildConfig(config);
+
+        expect(built.runtime.max_input_length).toBe(0);
+        expect(built.runtime.max_output_length).toBe(0);
+        expect(built.bots[0].max_tokens).toBe(0);
+    });
+
     test('keeps hyphens while editing the username draft', () => {
         expect(draftUsername('qwen-test-ocr')).toBe('qwen-test-ocr');
         expect(draftUsername('qwen-')).toBe('qwen-');

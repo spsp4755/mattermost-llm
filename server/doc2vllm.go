@@ -58,7 +58,7 @@ type doc2vllmChatRequest struct {
 	Messages    []doc2vllmMessage `json:"messages"`
 	Stream      bool              `json:"stream,omitempty"`
 	Temperature float64           `json:"temperature"`
-	MaxTokens   int               `json:"max_tokens"`
+	MaxTokens   int               `json:"max_tokens,omitempty"`
 	TopP        float64           `json:"top_p"`
 }
 
@@ -136,7 +136,8 @@ type doc2vllmRequestDebug struct {
 	UserPrompt          string                  `json:"user_prompt,omitempty"`
 	EffectiveUserPrompt string                  `json:"effective_user_prompt,omitempty"`
 	Temperature         float64                 `json:"temperature"`
-	MaxTokens           int                     `json:"max_tokens"`
+	MaxTokens           int                     `json:"max_tokens,omitempty"`
+	MaxTokensSource     string                  `json:"max_tokens_source,omitempty"`
 	TopP                float64                 `json:"top_p"`
 	RepetitionPenalty   float64                 `json:"repetition_penalty,omitempty"`
 	PresencePenalty     float64                 `json:"presence_penalty,omitempty"`
@@ -631,11 +632,13 @@ func buildDoc2VLLMRequestBody(requestPayload doc2vllmChatRequest, bot BotDefinit
 		"model":       requestPayload.Model,
 		"messages":    requestPayload.Messages,
 		"temperature": requestPayload.Temperature,
-		"max_tokens":  requestPayload.MaxTokens,
 		"top_p":       requestPayload.TopP,
 	}
 	if requestPayload.Stream {
 		body["stream"] = true
+	}
+	if requestPayload.MaxTokens > 0 {
+		body["max_tokens"] = requestPayload.MaxTokens
 	}
 
 	if bot.PresencePenalty != 0 {
@@ -1293,6 +1296,11 @@ func buildDoc2VLLMRequestDebug(
 	effectiveUserPrompt string,
 	correlationID string,
 ) doc2vllmRequestDebug {
+	maxTokensSource := "configured"
+	if bot.usesModelDefaultMaxTokens() {
+		maxTokensSource = "model_default"
+	}
+
 	return doc2vllmRequestDebug{
 		URL:                 strings.TrimSpace(service.BaseURL),
 		AuthMode:            strings.TrimSpace(service.AuthMode),
@@ -1304,6 +1312,7 @@ func buildDoc2VLLMRequestDebug(
 		EffectiveUserPrompt: truncateString(strings.TrimSpace(effectiveUserPrompt), 2000),
 		Temperature:         requestPayload.Temperature,
 		MaxTokens:           requestPayload.MaxTokens,
+		MaxTokensSource:     maxTokensSource,
 		TopP:                requestPayload.TopP,
 		RepetitionPenalty:   bot.RepetitionPenalty,
 		PresencePenalty:     bot.PresencePenalty,

@@ -8,10 +8,9 @@ import (
 )
 
 const (
-	defaultDoc2VLLMModel     = "Qwen/Qwen2.5-7B-Instruct"
-	defaultDoc2VLLMMaxTokens = 1024
-	defaultDoc2VLLMTopP      = 1.0
-	defaultOutputMode        = "markdown"
+	defaultDoc2VLLMModel = "Qwen/Qwen2.5-7B-Instruct"
+	defaultDoc2VLLMTopP  = 1.0
+	defaultOutputMode    = "markdown"
 )
 
 type BotDefinition struct {
@@ -74,7 +73,7 @@ func (b BotDefinition) normalize() (BotDefinition, error) {
 	b.OutputMode = normalizeOutputMode(b.OutputMode)
 	b.OCRPrompt = strings.TrimSpace(b.OCRPrompt)
 	b.Temperature = normalizeDoc2VLLMTemperature(b.Temperature)
-	b.MaxTokens = positiveOrDefault(b.MaxTokens, defaultDoc2VLLMMaxTokens)
+	b.MaxTokens = normalizeOptionalPositive(b.MaxTokens)
 	b.TopP = normalizeDoc2VLLMTopP(b.TopP)
 	b.RepetitionPenalty = normalizeRepetitionPenalty(b.RepetitionPenalty)
 	b.PresencePenalty = normalizePenalty(b.PresencePenalty)
@@ -168,7 +167,11 @@ func (b BotDefinition) effectiveDoc2VLLMTemperature() float64 {
 }
 
 func (b BotDefinition) effectiveDoc2VLLMMaxTokens() int {
-	return positiveOrDefault(b.MaxTokens, defaultDoc2VLLMMaxTokens)
+	return normalizeOptionalPositive(b.MaxTokens)
+}
+
+func (b BotDefinition) usesModelDefaultMaxTokens() bool {
+	return b.effectiveDoc2VLLMMaxTokens() == 0
 }
 
 func (b BotDefinition) effectiveDoc2VLLMTopP() float64 {
