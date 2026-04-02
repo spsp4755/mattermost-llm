@@ -1,7 +1,7 @@
 {
     "id": "com.mattermost.vllm-llm",
     "name": "Mattermost LLM",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "Generic Mattermost plugin for OpenAI-compatible text, multimodal, and OCR-capable LLM endpoints.",
     "homepage_url": "https://github.com/spsp4755/mattermost-llm",
     "support_url": "https://github.com/spsp4755/mattermost-llm",
