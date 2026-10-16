@@ -176,7 +176,7 @@ type Props = {
 type FieldProps = {label: string; help?: string; required?: boolean; children: React.ReactNode};
 
 const sampleBots: Partial<BotDefinition>[] = [
-    {id: 'mm-llm-chat', username: 'mm-llm-chat', display_name: '\uc77c\ubc18 \ub300\ud654 / \ud14d\uc2a4\ud2b8 \uc0dd\uc131', description: '\ud14d\uc2a4\ud2b8 \uc9c8\uc758\uc640 \ubb38\uc11c \uc694\uc57d\uc5d0 \uc801\ud569\ud55c \ubc94\uc6a9 \ubd07', model: defaultModel, mode: 'chat', output_mode: 'markdown', ocr_prompt: '\uc0ac\uc6a9\uc790 \uc694\uccad\uc744 \uba85\ud655\ud558\uac8c \uc218\ud589\ud558\uace0, \ud575\uc2ec \uc704\uc8fc\ub85c \uac04\uacb0\ud558\uac8c \ub2f5\ud558\uc138\uc694.', temperature: 0.2, max_tokens: 2048, top_p: 1, repetition_penalty: 1, mask_sensitive_data: false},
+    {id: 'mm-llm-chat', username: 'mm-llm-chat', display_name: '\uc77c\ubc18 \ub300\ud654 / \ud14d\uc2a4\ud2b8 \uc0dd\uc131', description: '\ud14d\uc2a4\ud2b8 \uc9c8\uc758\uc640 \ubb38\uc11c \uc694\uc57d\uc5d0 \uc801\ud569\ud55c \ubc94\uc6a9 \ubd07', model: defaultModel, mode: 'chat', output_mode: 'rich', ocr_prompt: '\uc0ac\uc6a9\uc790 \uc694\uccad\uc744 \uba85\ud655\ud558\uac8c \uc218\ud589\ud558\uace0, \ud575\uc2ec \uc704\uc8fc\ub85c \uac04\uacb0\ud558\uac8c \ub2f5\ud558\uc138\uc694.', temperature: 0.2, max_tokens: 2048, top_p: 1, repetition_penalty: 1, mask_sensitive_data: false},
     {id: 'mm-llm-qwen-vl', username: 'mm-llm-qwen-vl', display_name: '\uba40\ud2f0\ubaa8\ub2ec \ubd84\uc11d', description: 'Qwen \uacc4\uc5f4 \uba40\ud2f0\ubaa8\ub2ec \ubaa8\ub378 \uc608\uc2dc', model: defaultMultimodalModel, mode: 'multimodal', output_mode: 'markdown', ocr_prompt: '\ucca8\ubd80\ub41c \uc774\ubbf8\uc9c0\ub098 \ubb38\uc11c\uc758 \ubcf4\uc774\ub294 \ub0b4\uc6a9\ub9cc \uadfc\uac70\ub85c \ub2f5\ud558\uc138\uc694.', temperature: 0, max_tokens: 3072, top_p: 1, repetition_penalty: 1, extra_request_json: '{"min_pixels":3136,"max_pixels":12845056}', mask_sensitive_data: false},
     {id: 'mm-llm-ocr', username: 'mm-llm-ocr', display_name: '\ubb38\uc11c OCR / \ucd94\ucd9c', description: '\uc6d0\ubb38 \ucda9\uc2e4\ub3c4\uac00 \uc911\uc694\ud55c \ubb38\uc11c \ucd94\ucd9c\uc6a9 \ubd07', model: defaultMultimodalModel, mode: 'ocr', output_mode: 'markdown', ocr_prompt: '\ucca8\ubd80\ub41c \ubb38\uc11c\uc758 \ud14d\uc2a4\ud2b8\ub97c \uc6d0\ubb38\uc5d0 \ucda9\uc2e4\ud558\uac8c \ucd94\ucd9c\ud558\uc138\uc694.', temperature: 0, max_tokens: 2048, top_p: 1, repetition_penalty: 1, mask_sensitive_data: false},
 ];
@@ -414,6 +414,7 @@ export default function ConfigSetting(props: Props) {
                                     </Field>
                                     <Field label={T.outputMode}>
                                         <select disabled={disabled} style={field} value={bot.output_mode} onChange={(e) => updateBot(bot.local_id, {output_mode: text(e.target.value) || 'markdown'})}>
+                                            <option value='rich'>{'rich (markdown + 다이어그램)'}</option>
                                             <option value='markdown'>{'markdown'}</option>
                                             <option value='text'>{'text'}</option>
                                             <option value='json'>{'json'}</option>
@@ -772,7 +773,7 @@ function renderConnectionStatus(status: ConnectionStatus): string {
 function emptyBot(existingBots: DraftBot[], defaultMaskSensitiveData: boolean): DraftBot {
     const identity = nextBotIdentity(existingBots);
     const local = id('bot');
-    return {local_id: local, bot_id: identity.id, username: '', display_name: '', description: '', base_url: '', auth_mode: '', auth_token: '', model: '', mode: 'chat', output_mode: 'markdown', ocr_prompt: '', temperature: 0, max_tokens: '', top_p: 1, repetition_penalty: 1, presence_penalty: 0, frequency_penalty: 0, extra_request_json: '', mask_sensitive_data: defaultMaskSensitiveData, vllm_base_url: '', vllm_api_key: '', vllm_model: '', vllm_prompt: '', vllm_scope: 'postprocess', allowed_teams: [], allowed_channels: [], allowed_users: []};
+    return {local_id: local, bot_id: identity.id, username: '', display_name: '', description: '', base_url: '', auth_mode: '', auth_token: '', model: '', mode: 'chat', output_mode: 'rich', ocr_prompt: '', temperature: 0, max_tokens: '', top_p: 1, repetition_penalty: 1, presence_penalty: 0, frequency_penalty: 0, extra_request_json: '', mask_sensitive_data: defaultMaskSensitiveData, vllm_base_url: '', vllm_api_key: '', vllm_model: '', vllm_prompt: '', vllm_scope: 'postprocess', allowed_teams: [], allowed_channels: [], allowed_users: []};
 }
 
 function nextBotIdentity(existingBots: DraftBot[], start = 1): {id: string; username: string; display_name: string} {

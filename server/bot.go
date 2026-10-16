@@ -302,7 +302,7 @@ func normalizeOutputMode(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "markdown":
 		return defaultOutputMode
-	case "text", "json":
+	case "text", "json", "rich":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return defaultOutputMode

@@ -1,3 +1,7 @@
+/**
+ * @jest-environment jsdom
+ */
+
 jest.mock('mermaid/dist/mermaid.esm.min.mjs', () => ({
     __esModule: true,
     default: {
@@ -6,7 +10,7 @@ jest.mock('mermaid/dist/mermaid.esm.min.mjs', () => ({
     },
 }));
 
-import {containsCompleteMermaidFence, normalizeRenderableMessage, splitRenderableMessage} from './mermaid_rendering';
+import {buildMermaidConfig, containsCompleteMermaidFence, detectDiagramType, normalizeRenderableMessage, splitRenderableMessage} from './mermaid_rendering';
 
 test('containsCompleteMermaidFence matches only closed mermaid fences', () => {
     expect(containsCompleteMermaidFence('```mermaid\ngraph TD\nA-->B\n```')).toBe(true);
@@ -138,4 +142,23 @@ test('normalizeRenderableMessage keeps html tables untouched inside fenced code 
         '<table><tr><td>A</td></tr></table>',
         '```',
     ].join('\n'));
+});
+
+test('buildMermaidConfig follows a dark Mattermost theme', () => {
+    document.body.style.setProperty('--center-channel-bg', '#1f1f1f');
+    document.body.style.setProperty('--center-channel-color', '#dddddd');
+    document.body.style.setProperty('--button-bg', '#4a7cff');
+    const config = buildMermaidConfig() as any;
+    expect(config.theme).toBe('base');
+    expect(config.themeVariables.darkMode).toBe(true);
+    expect(config.themeVariables.primaryTextColor).toBe('#dddddd');
+    expect(config.themeVariables.primaryColor).toMatch(/^#[0-9a-f]{6}$/);
+
+    document.body.style.setProperty('--center-channel-bg', 'rgb(1, 2, 3)');
+    expect((buildMermaidConfig() as any).theme).toBe('neutral');
+});
+
+test('detectDiagramType reads the first directive', () => {
+    expect(detectDiagramType('%% comment\nflowchart LR\nA-->B')).toBe('flowchart');
+    expect(detectDiagramType('stateDiagram-v2\n[*] --> A')).toBe('stateDiagram');
 });

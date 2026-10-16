@@ -6,13 +6,23 @@ import type {GlobalState} from '@mattermost/types/store';
 import type {BotDefinition, BotRunResult, ExecutionRecord} from '../client';
 import {getBots, getHistory, runBot} from '../client';
 
-const card: React.CSSProperties = {background: 'rgba(var(--center-channel-color-rgb),.04)', border: '1px solid rgba(var(--center-channel-color-rgb),.12)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8};
-const field: React.CSSProperties = {width: '100%', border: '1px solid rgba(var(--center-channel-color-rgb),.16)', borderRadius: 8, padding: '10px 12px'};
+const muted = 'rgba(var(--center-channel-color-rgb),.64)';
+const section: React.CSSProperties = {display: 'flex', flexDirection: 'column', gap: 10};
+const card: React.CSSProperties = {border: '1px solid rgba(var(--center-channel-color-rgb),.12)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13};
+const field: React.CSSProperties = {width: '100%', background: 'var(--center-channel-bg)', color: 'inherit', border: '1px solid rgba(var(--center-channel-color-rgb),.16)', borderRadius: 8, padding: '10px 12px', fontSize: 14};
+const chip: React.CSSProperties = {background: 'rgba(var(--button-bg-rgb),.08)', border: 0, borderRadius: 999, color: 'rgb(var(--button-bg-rgb))', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '6px 10px'};
+const label: React.CSSProperties = {color: muted, fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase'};
+const suggestions = ['이 내용을 다이어그램으로 정리해줘', '핵심만 5줄로 요약해줘', '장단점을 표로 비교해줘', '이 문서의 처리 흐름을 순서도로 그려줘'];
+
+function StatusDot({status}: {status: string}) {
+    const ok = (/success|ok|completed/i).test(status);
+    return <span style={{background: ok ? 'var(--online-indicator)' : 'var(--dnd-indicator)', borderRadius: 999, display: 'inline-block', height: 8, marginRight: 6, width: 8}}/>;
+}
 
 export default function RHSPane() {
     const channelId = useSelector((state: GlobalState) => state.entities.channels.currentChannelId);
     const selectedPostId = useSelector((state: GlobalState) => (state as any).views?.rhs?.selectedPostId as string | undefined);
-    const post = useSelector((state: GlobalState) => selectedPostId ? ((state as any).entities?.posts?.posts || {})[selectedPostId] : null) as any;
+    const post = useSelector((state: GlobalState) => (selectedPostId ? ((state as any).entities?.posts?.posts || {})[selectedPostId] : null)) as any;
     const files = useSelector((state: GlobalState) => ((state as any).entities?.files?.files || {})) as Record<string, any>;
 
     const [bots, setBots] = useState<BotDefinition[]>([]);
@@ -41,7 +51,7 @@ export default function RHSPane() {
                 }
                 setBots(nextBots);
                 setHistory(nextHistory);
-                setSelectedBotId((current) => current && nextBots.some((item) => item.id === current) ? current : (nextBots[0]?.id || ''));
+                setSelectedBotId((current) => (current && nextBots.some((item) => item.id === current) ? current : (nextBots[0]?.id || '')));
             } catch (e) {
                 if (!cancelled) {
                     setMessage((e as Error).message);
@@ -77,41 +87,95 @@ export default function RHSPane() {
         }
     }
 
+    const canSubmit = !submitting && Boolean(bot) && Boolean(channelId) && (prompt.trim() !== '' || fileIds.length > 0);
+
     return (
-        <div style={{display: 'flex', flexDirection: 'column', gap: 16, padding: 16}}>
-            <section style={card}>
-                <strong>{'Mattermost LLM'}</strong>
-                <span style={{fontSize: 12, opacity: .8}}>{'\ud14d\uc2a4\ud2b8\ub9cc \ubcf4\ub0b4\ub3c4 \ub418\uace0, \ucca8\ubd80 \ud30c\uc77c\uc744 \ud568\uaed8 \ubcf4\ub0b4 \uba40\ud2f0\ubaa8\ub2ec / \ubb38\uc11c \ubd84\uc11d\uc744 \uc2dc\uc791\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.'}</span>
-                {loading && <span>{'\ubd07 \ubaa9\ub85d\uc744 \ubd88\ub7ec\uc624\ub294 \uc911\uc785\ub2c8\ub2e4...'}</span>}
-                {!loading && bots.length === 0 && <span>{'\ud604\uc7ac \ucc44\ub110\uc5d0\uc11c \uc0ac\uc6a9\ud560 \uc218 \uc788\ub294 \ubd07\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.'}</span>}
+        <div style={{display: 'flex', flexDirection: 'column', gap: 20, padding: 16}}>
+            <section style={section}>
+                <div>
+                    <div style={{fontSize: 16, fontWeight: 700}}>{'무엇을 도와드릴까요?'}</div>
+                    <div style={{color: muted, fontSize: 12, marginTop: 2}}>{'텍스트만 보내도 되고, 포스트를 선택해 첨부 파일과 함께 분석할 수도 있습니다.'}</div>
+                </div>
+                {loading && <span style={{color: muted}}>{'봇 목록을 불러오는 중입니다...'}</span>}
+                {!loading && bots.length === 0 && <span style={{color: muted}}>{'현재 채널에서 사용할 수 있는 봇이 없습니다.'}</span>}
                 {!loading && bots.length > 0 && (
                     <>
-                        <select style={field} value={bot?.id || ''} onChange={(e) => setSelectedBotId(e.target.value)}>
-                            {bots.map((item) => <option key={item.id} value={item.id}>{`${item.display_name || item.username} (@${item.username})`}</option>)}
+                        <select
+                            style={field}
+                            value={bot?.id || ''}
+                            onChange={(e) => setSelectedBotId(e.target.value)}
+                        >
+                            {bots.map((item) => (
+                                <option
+                                    key={item.id}
+                                    value={item.id}
+                                >
+                                    {`${item.display_name || item.username} (@${item.username})`}
+                                </option>
+                            ))}
                         </select>
-                        <div style={{fontSize: 12, opacity: .8}}>{selectedPostId ? (fileNames.length > 0 ? `\ucca8\ubd80 \ud30c\uc77c: ${fileNames.join(', ')}` : '\ucca8\ubd80 \ud30c\uc77c \uc5c6\uc774 \ud14d\uc2a4\ud2b8 \ub300\ud654\ub85c\ub3c4 \uc2e4\ud589\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.') : '\ud3ec\uc2a4\ud2b8\uc5d0\uc11c RHS\ub97c \uc5f4\uc5b4 \ud14d\uc2a4\ud2b8 \ub610\ub294 \ucca8\ubd80 \ud30c\uc77c \uae30\ubc18 \uc694\uccad\uc744 \ubcf4\ub0bc \uc218 \uc788\uc2b5\ub2c8\ub2e4.'}</div>
-                        <textarea style={{...field, resize: 'vertical'}} rows={5} value={prompt} placeholder={'\uc608: \uc774 \ubb38\uc11c \ud575\uc2ec\uc744 5\uc904\ub85c \uc694\uc57d\ud574\uc918 / \uc624\ub298 \ud68c\uc758 \ub0b4\uc6a9\uc744 \uc815\ub9ac\ud574\uc918'} onChange={(e) => setPrompt(e.target.value)}/>
-                        <button className='btn btn-primary' type='button' disabled={submitting || !bot || !channelId || (!prompt.trim() && fileIds.length === 0)} onClick={submit}>{submitting ? '\uc694\uccad \uc911...' : `@${bot?.username || 'bot'}\ub85c \uc2e4\ud589`}</button>
+                        {fileNames.length > 0 && <div style={{...card, padding: '8px 12px'}}><span style={label}>{'첨부 파일'}</span><span>{fileNames.join(', ')}</span></div>}
+                        <textarea
+                            style={{...field, resize: 'vertical', minHeight: 110}}
+                            rows={5}
+                            value={prompt}
+                            placeholder={'질문을 입력하세요 (Ctrl+Enter로 전송)'}
+                            onChange={(e) => setPrompt(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && canSubmit) {
+                                    e.preventDefault();
+                                    submit();
+                                }
+                            }}
+                        />
+                        <div style={{display: 'flex', flexWrap: 'wrap', gap: 6}}>
+                            {suggestions.map((item) => (
+                                <button
+                                    key={item}
+                                    style={chip}
+                                    type='button'
+                                    onClick={() => setPrompt(item)}
+                                >
+                                    {item}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            className='btn btn-primary'
+                            type='button'
+                            disabled={!canSubmit}
+                            onClick={submit}
+                        >{submitting ? '요청 중...' : `@${bot?.username || 'bot'}에게 보내기`}</button>
                     </>
                 )}
-                {message && <span>{message}</span>}
+                {message && <span style={{color: muted, fontSize: 12}}>{message}</span>}
             </section>
 
             {lastResult && (
-                <section style={card}>
-                    <strong>{'\ucd5c\uadfc \uc2e4\ud589 \uacb0\uacfc'}</strong>
-                    <div>{`${lastResult.bot_name || lastResult.bot_username} - ${lastResult.status}`}</div>
-                    <div>{`Model: ${lastResult.model}`}</div>
-                    {typeof lastResult.api_duration_ms === 'number' && lastResult.api_duration_ms > 0 && <div>{`API: ${(lastResult.api_duration_ms / 1000).toFixed(2)}s`}</div>}
-                    {lastResult.output && <div style={{fontSize: 12, opacity: .8, whiteSpace: 'pre-wrap'}}>{cut(lastResult.output, 400)}</div>}
-                    {lastResult.error_message && <div style={{whiteSpace: 'pre-wrap'}}>{lastResult.error_message}</div>}
+                <section style={section}>
+                    <span style={label}>{'최근 실행 결과'}</span>
+                    <div style={card}>
+                        <div style={{fontWeight: 600}}><StatusDot status={lastResult.status}/>{lastResult.bot_name || lastResult.bot_username}</div>
+                        <div style={{color: muted, fontSize: 12}}>{[lastResult.model, typeof lastResult.api_duration_ms === 'number' && lastResult.api_duration_ms > 0 ? `${(lastResult.api_duration_ms / 1000).toFixed(2)}s` : ''].filter(Boolean).join(' · ')}</div>
+                        {lastResult.output && <div style={{whiteSpace: 'pre-wrap'}}>{cut(lastResult.output, 400)}</div>}
+                        {lastResult.error_message && <div style={{color: 'var(--dnd-indicator)', whiteSpace: 'pre-wrap'}}>{lastResult.error_message}</div>}
+                    </div>
                 </section>
             )}
 
-            <section style={card}>
-                <strong>{'\ucd5c\uadfc \uae30\ub85d'}</strong>
-                {history.length === 0 && <span>{'\uc544\uc9c1 \uc2e4\ud589 \uae30\ub85d\uc774 \uc5c6\uc2b5\ub2c8\ub2e4.'}</span>}
-                {history.map((item) => <div key={item.correlation_id} style={{fontSize: 12}}><strong>{item.bot_name || item.bot_username}</strong><div>{`@${item.bot_username} -> ${item.model}`}</div><div>{`${item.status} via ${item.source}`}</div>{item.error_message && <div style={{whiteSpace: 'pre-wrap'}}>{item.error_message}</div>}</div>)}
+            <section style={section}>
+                <span style={label}>{'최근 기록'}</span>
+                {history.length === 0 && <span style={{color: muted, fontSize: 12}}>{'아직 실행 기록이 없습니다.'}</span>}
+                {history.map((item) => (
+                    <div
+                        key={item.correlation_id}
+                        style={card}
+                    >
+                        <div style={{fontWeight: 600}}><StatusDot status={item.status}/>{item.bot_name || item.bot_username}</div>
+                        <div style={{color: muted, fontSize: 12}}>{`${item.model} · ${item.source}`}</div>
+                        {item.error_message && <div style={{color: 'var(--dnd-indicator)', fontSize: 12, whiteSpace: 'pre-wrap'}}>{item.error_message}</div>}
+                    </div>
+                ))}
             </section>
         </div>
     );

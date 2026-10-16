@@ -1,6 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 
-import {renderMermaidDefinition} from '../mermaid_rendering';
+import {detectDiagramType, renderMermaidDefinition} from '../mermaid_rendering';
 
 type Props = {
     definition: string;
@@ -17,8 +17,12 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
     const [copied, setCopied] = useState(false);
     const [showSource, setShowSource] = useState(false);
     const [showRenderedPopup, setShowRenderedPopup] = useState(false);
+    const diagramType = detectDiagramType(definition);
 
     useEffect(() => {
+        if (showSource) {
+            return () => undefined;
+        }
         return renderIntoContainer({
             containerRef,
             definition,
@@ -27,18 +31,21 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
             setError,
             variant: 'inline',
         });
-    }, [definition, index, postID]);
+    }, [definition, index, postID, showSource]);
 
     useEffect(() => {
         if (!showRenderedPopup) {
             setPopupError('');
-            if (popupContainerRef.current) {
-                popupContainerRef.current.innerHTML = '';
-            }
             return () => undefined;
         }
 
-        return renderIntoContainer({
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setShowRenderedPopup(false);
+            }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        const cleanupRender = renderIntoContainer({
             containerRef: popupContainerRef,
             definition,
             postID,
@@ -46,6 +53,10 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
             setError: setPopupError,
             variant: 'popup',
         });
+        return () => {
+            document.removeEventListener('keydown', onKeyDown);
+            cleanupRender();
+        };
     }, [definition, index, postID, showRenderedPopup]);
 
     useEffect(() => {
@@ -72,10 +83,37 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
         }, 1600);
     };
 
+    const handleDownload = () => {
+        const svg = containerRef.current?.querySelector('svg');
+        if (!svg) {
+            return;
+        }
+        const url = URL.createObjectURL(new Blob([svg.outerHTML], {type: 'image/svg+xml'}));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${diagramType}-${postID.slice(0, 8)}-${index}.svg`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const sourceBlock = (
+        <pre className='post-code doc2vllm-mermaid-source'>
+            <code className='language-mermaid'>{definition}</code>
+        </pre>
+    );
+
     return (
         <>
             <div className='doc2vllm-mermaid-card'>
                 <div className='doc2vllm-mermaid-toolbar'>
+                    <span className='doc2vllm-mermaid-type'>{diagramType}</span>
+                    <button
+                        className='doc2vllm-mermaid-toolbar-button'
+                        onClick={() => setShowSource((value) => !value)}
+                        type='button'
+                    >
+                        {showSource ? '다이어그램' : '코드'}
+                    </button>
                     <button
                         className='doc2vllm-mermaid-toolbar-button'
                         onClick={handleCopy}
@@ -83,33 +121,31 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                     >
                         {copied ? '복사됨' : '복사'}
                     </button>
-                    <button
-                        className='doc2vllm-mermaid-toolbar-button'
-                        onClick={() => setShowSource(true)}
-                        type='button'
-                    >
-                        {'원문 보기'}
-                    </button>
-                    <button
-                        className='doc2vllm-mermaid-toolbar-button'
-                        onClick={() => setShowRenderedPopup(true)}
-                        type='button'
-                    >
-                        {'렌더 팝업'}
-                    </button>
+                    {!showSource && !error && (
+                        <>
+                            <button
+                                className='doc2vllm-mermaid-toolbar-button'
+                                onClick={handleDownload}
+                                type='button'
+                            >
+                                {'SVG'}
+                            </button>
+                            <button
+                                className='doc2vllm-mermaid-toolbar-button'
+                                onClick={() => setShowRenderedPopup(true)}
+                                type='button'
+                            >
+                                {'확대'}
+                            </button>
+                        </>
+                    )}
                 </div>
-                {error && (
+                {error && !showSource && (
                     <div className='doc2vllm-mermaid-error'>
-                        {`Mermaid 렌더링 실패: ${error}`}
+                        {`다이어그램을 그리지 못해 코드로 표시합니다: ${error}`}
                     </div>
                 )}
-                {error ? (
-                    <div className='doc2vllm-mermaid-fallback'>
-                        <pre className='post-code'>
-                            <code className='language-mermaid'>{definition}</code>
-                        </pre>
-                    </div>
-                ) : (
+                {showSource || error ? sourceBlock : (
                     <div className='doc2vllm-mermaid-rendered'>
                         <div
                             data-testid='doc2vllm-mermaid-diagram'
@@ -125,12 +161,13 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                     role='presentation'
                 >
                     <div
+                        aria-modal='true'
                         className='doc2vllm-mermaid-modal doc2vllm-mermaid-render-modal'
                         onClick={(event) => event.stopPropagation()}
                         role='dialog'
                     >
                         <div className='doc2vllm-mermaid-modal-header'>
-                            <strong>{'Mermaid 렌더 팝업'}</strong>
+                            <strong>{diagramType}</strong>
                             <div className='doc2vllm-mermaid-modal-actions'>
                                 <button
                                     className='doc2vllm-mermaid-toolbar-button'
@@ -154,11 +191,7 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                             </div>
                         )}
                         <div className='doc2vllm-mermaid-modal-content'>
-                            {popupError ? (
-                                <pre className='post-code doc2vllm-mermaid-source'>
-                                    <code className='language-mermaid'>{definition}</code>
-                                </pre>
-                            ) : (
+                            {popupError ? sourceBlock : (
                                 <div
                                     className='doc2vllm-mermaid-rendered doc2vllm-mermaid-rendered-popup'
                                     data-testid='doc2vllm-mermaid-diagram-popup'
@@ -166,42 +199,6 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                                 />
                             )}
                         </div>
-                    </div>
-                </div>
-            )}
-            {showSource && (
-                <div
-                    className='doc2vllm-mermaid-modal-backdrop'
-                    onClick={() => setShowSource(false)}
-                    role='presentation'
-                >
-                    <div
-                        className='doc2vllm-mermaid-modal'
-                        onClick={(event) => event.stopPropagation()}
-                        role='dialog'
-                    >
-                        <div className='doc2vllm-mermaid-modal-header'>
-                            <strong>{'Mermaid 원문'}</strong>
-                            <div className='doc2vllm-mermaid-modal-actions'>
-                                <button
-                                    className='doc2vllm-mermaid-toolbar-button'
-                                    onClick={handleCopy}
-                                    type='button'
-                                >
-                                    {copied ? '복사됨' : '복사'}
-                                </button>
-                                <button
-                                    className='doc2vllm-mermaid-toolbar-button'
-                                    onClick={() => setShowSource(false)}
-                                    type='button'
-                                >
-                                    {'닫기'}
-                                </button>
-                            </div>
-                        </div>
-                        <pre className='post-code doc2vllm-mermaid-source'>
-                            <code className='language-mermaid'>{definition}</code>
-                        </pre>
                     </div>
                 </div>
             )}

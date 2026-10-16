@@ -8,7 +8,7 @@ export type RenderableMessageSegment = {
 };
 
 const mermaidFencePattern = /```mermaid[\t ]*\n([\s\S]*?)\n```/gi;
-let mermaidInitialized = false;
+let initializedThemeKey = '';
 
 export function containsCompleteMermaidFence(message: string) {
     return (/```mermaid[\t ]*\n[\s\S]*?\n```/i).test(normalizeRenderableMessage(message));
@@ -82,16 +82,109 @@ export function splitRenderableMessage(message: string): RenderableMessageSegmen
 
 export async function renderMermaidDefinition(definition: string, postID: string, index: number, variant = 'inline') {
     const mermaid = getMermaidModule();
-    if (!mermaidInitialized) {
-        mermaid.initialize({
-            startOnLoad: false,
-            securityLevel: 'strict',
-            theme: 'neutral',
-            fontFamily: 'inherit',
-        });
-        mermaidInitialized = true;
+    const themeKey = readThemeColors().join(',');
+    if (themeKey !== initializedThemeKey) {
+        mermaid.initialize(buildMermaidConfig());
+        initializedThemeKey = themeKey;
     }
     return mermaid.render(buildDiagramID(postID, index, variant), definition);
+}
+
+export function detectDiagramType(definition: string) {
+    const firstLine = definition.split('\n').map((line) => line.trim()).find((line) => line && !line.startsWith('%%')) || '';
+    return firstLine.split(/[\s-]/)[0] || 'diagram';
+}
+
+// Mattermost exposes its theme as CSS variables; mermaid needs concrete colors, so we read them once per theme.
+function readThemeColors() {
+    if (typeof document === 'undefined') {
+        return ['#ffffff', '#3f4350', '#1c58d9'];
+    }
+    const style = getComputedStyle(document.body);
+    const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+    return [read('--center-channel-bg', '#ffffff'), read('--center-channel-color', '#3f4350'), read('--button-bg', '#1c58d9')];
+}
+
+export function buildMermaidConfig() {
+    const [bg, fg, accent] = readThemeColors();
+    const parsed = [bg, fg, accent].map(parseHexColor);
+
+    // Mermaid 12 defaults to the shadowed "neo" look and ELK layout; classic + dagre stay legible inside chat posts.
+    // suppressErrorRendering stops mermaid from leaving its "Syntax error" bomb in document.body; we show the code instead.
+    const base = {startOnLoad: false, securityLevel: 'strict' as const, fontFamily: 'inherit', look: 'classic' as const, layout: 'dagre', suppressErrorRendering: true};
+    if (parsed.some((color) => !color)) {
+        return {...base, theme: 'neutral' as const};
+    }
+    const [bgRGB, fgRGB, accentRGB] = parsed as RGB[];
+    const darkMode = luminance(bgRGB) < 0.5;
+    const chartColors = chartPalette(accentRGB).map((color) => mixHex(color, bgRGB, darkMode ? 0.75 : 0.85));
+    return {
+        ...base,
+        theme: 'base' as const,
+        themeVariables: {
+            darkMode,
+            background: bg,
+            fontFamily: 'inherit',
+            fontSize: '14px',
+            primaryColor: mixHex(accentRGB, bgRGB, 0.14),
+            primaryBorderColor: mixHex(accentRGB, bgRGB, 0.6),
+            primaryTextColor: fg,
+            secondaryColor: mixHex(fgRGB, bgRGB, 0.06),
+            secondaryBorderColor: mixHex(fgRGB, bgRGB, 0.3),
+            secondaryTextColor: fg,
+            tertiaryColor: mixHex(fgRGB, bgRGB, 0.03),
+            tertiaryBorderColor: mixHex(fgRGB, bgRGB, 0.2),
+            tertiaryTextColor: fg,
+            lineColor: mixHex(fgRGB, bgRGB, 0.55),
+            textColor: fg,
+            mainBkg: mixHex(accentRGB, bgRGB, 0.14),
+            nodeBorder: mixHex(accentRGB, bgRGB, 0.6),
+            clusterBkg: mixHex(fgRGB, bgRGB, 0.04),
+            clusterBorder: mixHex(fgRGB, bgRGB, 0.2),
+            edgeLabelBackground: bg,
+            noteBkgColor: mixHex(accentRGB, bgRGB, 0.08),
+            noteTextColor: fg,
+            noteBorderColor: mixHex(accentRGB, bgRGB, 0.4),
+            ...Object.fromEntries(chartColors.map((color, i) => [`pie${i + 1}`, color])),
+
+            // Mindmap and timeline sections.
+            ...Object.fromEntries(chartColors.map((color, i) => [`cScale${i}`, color])),
+            ...Object.fromEntries(chartColors.map((_, i) => [`cScaleLabel${i}`, '#ffffff'])),
+            xyChart: {plotColorPalette: chartColors.join(','), backgroundColor: bg, titleColor: fg, xAxisLabelColor: fg, yAxisLabelColor: fg, xAxisTitleColor: fg, yAxisTitleColor: fg, xAxisLineColor: mixHex(fgRGB, bgRGB, 0.4), yAxisLineColor: mixHex(fgRGB, bgRGB, 0.4), xAxisTickColor: mixHex(fgRGB, bgRGB, 0.4), yAxisTickColor: mixHex(fgRGB, bgRGB, 0.4)},
+            pieStrokeColor: bg,
+            pieOuterStrokeColor: mixHex(fgRGB, bgRGB, 0.2),
+            pieOpacity: '1',
+            pieSectionTextColor: '#ffffff',
+            pieTitleTextColor: fg,
+            pieLegendTextColor: fg,
+        },
+        flowchart: {curve: 'basis' as const, padding: 16, htmlLabels: true},
+        sequence: {mirrorActors: false},
+    };
+}
+
+type RGB = [number, number, number];
+
+// Categorical colors for pie/chart slices, led by the theme accent.
+function chartPalette(accent: RGB): RGB[] {
+    return [accent, [20, 184, 166], [245, 158, 11], [139, 92, 246], [239, 68, 68], [100, 116, 139]];
+}
+
+function parseHexColor(value: string): RGB | null {
+    const match = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!match) {
+        return null;
+    }
+    const hex = match[1].length === 3 ? match[1].split('').map((c) => c + c).join('') : match[1];
+    return [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)) as RGB;
+}
+
+function mixHex(top: RGB, bottom: RGB, weight: number) {
+    return '#' + top.map((channel, i) => Math.round((channel * weight) + (bottom[i] * (1 - weight))).toString(16).padStart(2, '0')).join('');
+}
+
+function luminance([r, g, b]: RGB) {
+    return ((0.299 * r) + (0.587 * g) + (0.114 * b)) / 255;
 }
 
 function getMermaidModule() {

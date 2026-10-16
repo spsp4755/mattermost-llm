@@ -1107,3 +1107,16 @@ func buildTestOOXMLArchive(t *testing.T, files map[string]string) []byte {
 	require.NoError(t, writer.Close())
 	return buffer.Bytes()
 }
+
+func TestBuildDoc2VLLMSystemPromptAddsRichFormattingGuide(t *testing.T) {
+	bot, err := (BotDefinition{Username: "rich-bot", Mode: "chat", OutputMode: "rich", OCRPrompt: "Be concise."}).normalize()
+	require.NoError(t, err)
+	require.Equal(t, "rich", bot.OutputMode)
+
+	prompt := buildDoc2VLLMSystemPrompt(bot, "", false)
+	require.True(t, strings.HasPrefix(prompt, "Be concise."))
+	require.Contains(t, prompt, "```mermaid")
+
+	bot.OutputMode = "markdown"
+	require.Equal(t, "Be concise.", buildDoc2VLLMSystemPrompt(bot, "", false))
+}

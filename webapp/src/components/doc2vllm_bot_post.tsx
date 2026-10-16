@@ -4,6 +4,7 @@ import type {WebSocketMessage} from '@mattermost/client';
 
 import PostText from './post_text';
 
+import {splitResponseParts} from '../response_parts';
 import {isDoc2VLLMAwaitingFirstChunk} from '../streaming';
 
 type PostUpdateData = {
@@ -22,8 +23,8 @@ const containerStyle: React.CSSProperties = {display: 'flex', flexDirection: 'co
 const statusStyle: React.CSSProperties = {color: 'rgba(var(--center-channel-color-rgb), 0.72)', fontSize: '12px', fontWeight: 600, letterSpacing: '0.01em'};
 const precontentStyle: React.CSSProperties = {alignItems: 'center', color: 'rgba(var(--center-channel-color-rgb), 0.72)', display: 'inline-flex', fontSize: '13px', gap: '8px'};
 const spinnerStyle: React.CSSProperties = {animation: 'doc2vllm-stream-cursor-blink 700ms linear infinite', background: 'rgba(var(--center-channel-color-rgb), 0.16)', borderRadius: '999px', display: 'inline-block', height: '10px', width: '10px'};
-const toolbarStyle: React.CSSProperties = {alignItems: 'center', display: 'flex', gap: '8px'};
-const buttonStyle: React.CSSProperties = {background: 'rgba(var(--button-bg-rgb), 0.12)', border: '1px solid rgba(var(--button-bg-rgb), 0.28)', borderRadius: '999px', color: 'rgb(var(--button-bg-rgb))', cursor: 'pointer', fontSize: '12px', fontWeight: 600, padding: '6px 12px'};
+const footerStyle: React.CSSProperties = {alignItems: 'center', color: 'rgba(var(--center-channel-color-rgb), 0.56)', display: 'flex', flexWrap: 'wrap', fontSize: '12px', gap: '4px 12px'};
+const buttonStyle: React.CSSProperties = {background: 'transparent', border: '1px solid rgba(var(--center-channel-color-rgb), 0.16)', borderRadius: '6px', color: 'rgba(var(--center-channel-color-rgb), 0.72)', cursor: 'pointer', fontSize: '12px', fontWeight: 600, padding: '2px 8px'};
 const modalBackdropStyle: React.CSSProperties = {alignItems: 'center', background: 'rgba(0, 0, 0, 0.44)', bottom: 0, display: 'flex', justifyContent: 'center', left: 0, padding: '24px', position: 'fixed', right: 0, top: 0, zIndex: 2147483000};
 const modalCardStyle: React.CSSProperties = {background: 'var(--center-channel-bg)', border: '1px solid rgba(var(--center-channel-color-rgb), 0.12)', borderRadius: '12px', boxShadow: '0 16px 48px rgba(0, 0, 0, 0.24)', color: 'rgb(var(--center-channel-color-rgb))', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 48px)', overflow: 'hidden', width: 'min(960px, calc(100vw - 32px))'};
 const modalHeaderStyle: React.CSSProperties = {alignItems: 'center', borderBottom: '1px solid rgba(var(--center-channel-color-rgb), 0.12)', display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '16px 20px'};
@@ -40,7 +41,8 @@ export default function Doc2VLLMBotPost(props: Props) {
     const inputDebug = normalizeDebugPayload(props.post?.props?.doc2vllm_request_input || props.post?.props?.doc2vllm_error_input);
     const outputDebug = normalizeDebugPayload(props.post?.props?.doc2vllm_response_output || props.post?.props?.doc2vllm_error_output);
     const canShowDebug = inputDebug !== '' || outputDebug !== '';
-    const debugButtonLabel = outputDebug !== '' ? 'View request/response details' : 'View request details';
+    const parts = useMemo(() => splitResponseParts(message), [message]);
+    const model = props.post?.props?.doc2vllm_model || '';
     const debugModalTitle = outputDebug !== '' ? 'LLM request and response details' : 'LLM request details';
 
     useEffect(() => {
@@ -94,20 +96,68 @@ export default function Doc2VLLMBotPost(props: Props) {
     }, [listener, props.post.id, props.websocketRegister, props.websocketUnregister]);
 
     return (
-        <div data-testid='doc2vllm-bot-post' style={containerStyle}>
-            {canShowDebug && <div style={toolbarStyle}><button style={buttonStyle} type='button' onClick={() => setShowDebugModal(true)}>{debugButtonLabel}</button></div>}
-            {precontent && <span style={precontentStyle}><span style={spinnerStyle}/>{'Starting response generation...'}</span>}
-            <PostText channelID={props.post.channel_id} message={message} postID={props.post.id} showCursor={generating && !precontent}/>
-            {generating && !precontent && <span style={statusStyle}>{'Generating a response...'}</span>}
+        <div
+            data-testid='doc2vllm-bot-post'
+            style={containerStyle}
+        >
+            {precontent && <span style={precontentStyle}><span style={spinnerStyle}/>{'응답을 준비하고 있습니다...'}</span>}
+            <PostText
+                channelID={props.post.channel_id}
+                message={parts.body}
+                postID={props.post.id}
+                showCursor={generating && !precontent}
+            />
+            {parts.reasoning && (
+                <details className='doc2vllm-reasoning'>
+                    <summary>{'생각 과정 보기'}</summary>
+                    <PostText
+                        channelID={props.post.channel_id}
+                        message={parts.reasoning}
+                        postID={`${props.post.id}-reasoning`}
+                    />
+                </details>
+            )}
+            {generating && !precontent && <span style={statusStyle}>{'응답 생성 중...'}</span>}
+            {!generating && (parts.correlationID || canShowDebug) && (
+                <div
+                    data-testid='doc2vllm-post-footer'
+                    style={footerStyle}
+                >
+                    {model && <span>{model}</span>}
+                    {parts.duration && <span>{parts.duration}</span>}
+                    {parts.correlationID && <span title={'Correlation ID'}>{`ID ${parts.correlationID}`}</span>}
+                    {canShowDebug && (
+                        <button
+                            style={buttonStyle}
+                            type='button'
+                            onClick={() => setShowDebugModal(true)}
+                        >
+                            {'상세'}
+                        </button>
+                    )}
+                </div>
+            )}
             {showDebugModal && canShowDebug && (
-                <div aria-modal='true' role='dialog' style={modalBackdropStyle} onClick={() => setShowDebugModal(false)}>
-                    <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+                <div
+                    aria-modal='true'
+                    role='dialog'
+                    style={modalBackdropStyle}
+                    onClick={() => setShowDebugModal(false)}
+                >
+                    <div
+                        style={modalCardStyle}
+                        onClick={(event) => event.stopPropagation()}
+                    >
                         <div style={modalHeaderStyle}>
                             <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
                                 <strong>{debugModalTitle}</strong>
                                 <span style={statusStyle}>{`Correlation ID: ${props.post?.props?.doc2vllm_correlation_id || '-'}`}</span>
                             </div>
-                            <button style={buttonStyle} type='button' onClick={() => setShowDebugModal(false)}>{'Close'}</button>
+                            <button
+                                style={buttonStyle}
+                                type='button'
+                                onClick={() => setShowDebugModal(false)}
+                            >{'Close'}</button>
                         </div>
                         <div style={modalBodyStyle}>
                             <section style={debugPanelStyle}>

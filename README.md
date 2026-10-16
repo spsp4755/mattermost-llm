@@ -27,6 +27,16 @@ It supports:
 - `multimodal`: image and visual-document analysis
 - `ocr`: faithful document extraction workflows
 
+## Rich Responses and Diagrams
+
+Set a bot's `output_mode` to `rich` (the default for new chat bots) to get answers formatted like modern AI assistants:
+
+- The plugin appends formatting guidance to the system prompt so the model uses short headings, lists, tables and, when it helps, one Mermaid diagram (flowchart, sequence, state, timeline, mindmap, pie, gantt, ER, xychart).
+- The webapp renders ```` ```mermaid ```` fences with the bundled Mermaid 12 (works offline) as diagrams themed to the user's Mattermost light/dark theme, with copy, code view, zoom and SVG download.
+- Model metadata (model, response time, correlation ID) moves to a small footer under the answer, and separated reasoning is collapsed behind "생각 과정 보기".
+
+Mobile clients do not run webapp plugins, so they still show the plain Markdown and Mermaid source.
+
 ## Request Shape
 
 The plugin sends OpenAI-compatible chat completion requests. Text bots use plain `messages[].content` strings, while multimodal bots use `messages[].content[]` parts with `text` plus `image_url`.
@@ -110,7 +120,7 @@ The plugin stores its main settings inside the `Config` JSON field.
       "display_name": "Mattermost LLM Chat",
       "model": "Qwen/Qwen2.5-7B-Instruct",
       "mode": "chat",
-      "output_mode": "markdown",
+      "output_mode": "rich",
       "ocr_prompt": "Answer clearly and keep the response concise.",
       "temperature": 0.2,
       "max_tokens": 2048,

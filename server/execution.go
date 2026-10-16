@@ -1503,7 +1503,7 @@ func buildBotFailureMessage(bot BotDefinition, correlationID string, failure exe
 		lines = append(lines, "", "_재시도 가능:_ 예")
 	}
 	if failure.InputDebug != "" || failure.OutputDebug != "" {
-		lines = append(lines, "", "_상단 버튼에서 요청/응답 파라미터를 볼 수 있습니다._")
+		lines = append(lines, "", "_하단 '상세' 버튼에서 요청/응답 파라미터를 볼 수 있습니다._")
 	}
 	lines = append(lines, "", fmt.Sprintf("_Correlation ID:_ `%s`", correlationID))
 	if failure.APIDuration > 0 {

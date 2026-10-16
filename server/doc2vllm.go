@@ -27,6 +27,17 @@ const defaultDoc2VLLMFollowupPrompt = "Please answer using the extracted documen
 const defaultDoc2VLLMAttachmentUserPrompt = "Please process the attached document according to the system instructions."
 const defaultDoc2VLLMMultimodalPrompt = "Analyze the attached image or document and answer using only its visible contents."
 const defaultDoc2VLLMTextAttachmentPrompt = "Summarize the attached content and answer the user's request clearly."
+// richFormattingGuide is appended for output_mode "rich"; the webapp renders ```mermaid fences as diagrams.
+const richFormattingGuide = `[Response formatting]
+Format answers like a modern AI assistant, using Mattermost-flavored Markdown:
+- Start with a one or two sentence direct answer, then details. Use short "###" headings only for longer answers.
+- Use bullet lists for steps and options, and Markdown tables to compare items or summarize structured data.
+- When a process, architecture, sequence, timeline, hierarchy, state machine, or proportion would be clearer as a picture, add ONE Mermaid diagram in a fenced block that starts with ` + "```mermaid" + `.
+  Good fits: flowchart LR/TD, sequenceDiagram, stateDiagram-v2, timeline, mindmap, pie, gantt, erDiagram, xychart-beta.
+- Do not add a diagram for simple factual answers or small talk.
+- Mermaid rules: keep it under 15 nodes; use simple ASCII ids (A, B, api_server); put any label containing spaces, non-English text or punctuation in double quotes, e.g. A["사용자 요청"] --> B["응답 생성"]; never use HTML tags, styles, or click handlers; do not put Markdown inside the diagram.
+- Briefly explain the diagram in one sentence before or after it.`
+
 const defaultDoc2VLLMConnectionProbePrompt = "Reply with the exact text: connection ok"
 
 type doc2vllmServiceConfig struct {
@@ -405,6 +416,14 @@ func buildDoc2VLLMChatRequest(
 }
 
 func buildDoc2VLLMSystemPrompt(bot BotDefinition, documentContext string, hasAttachment bool) string {
+	prompt := buildBaseDoc2VLLMSystemPrompt(bot, documentContext, hasAttachment)
+	if bot.effectiveOutputMode() == "rich" {
+		return strings.TrimSpace(prompt + "\n\n" + richFormattingGuide)
+	}
+	return prompt
+}
+
+func buildBaseDoc2VLLMSystemPrompt(bot BotDefinition, documentContext string, hasAttachment bool) string {
 	if hasAttachment {
 		parts := []string{attachmentAssistantRole(bot)}
 		if instruction := strings.TrimSpace(bot.effectiveOCRInstruction()); instruction != "" {

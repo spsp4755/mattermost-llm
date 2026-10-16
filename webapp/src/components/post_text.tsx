@@ -223,43 +223,78 @@ function ensureStreamingStyles() {
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-card {
-    background: rgba(var(--center-channel-color-rgb), 0.03);
+    background: var(--center-channel-bg);
     border: 1px solid rgba(var(--center-channel-color-rgb), 0.12);
-    border-radius: 12px;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     margin: 12px 0;
     max-width: 100%;
-    padding: 12px;
-    position: relative;
+    overflow: hidden;
+}
+
+.${markdownBodyClassName} .doc2vllm-mermaid-card > .doc2vllm-mermaid-rendered,
+.${markdownBodyClassName} .doc2vllm-mermaid-card > .doc2vllm-mermaid-source {
+    padding: 16px;
+}
+
+.${markdownBodyClassName} .doc2vllm-mermaid-card > .doc2vllm-mermaid-source {
+    border: 0;
+    border-radius: 0;
+    margin: 0;
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-toolbar {
+    align-items: center;
+    background: rgba(var(--center-channel-color-rgb), 0.04);
+    border-bottom: 1px solid rgba(var(--center-channel-color-rgb), 0.08);
     display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    margin-bottom: 8px;
+    gap: 4px;
+    padding: 6px 8px 6px 12px;
+}
+
+.${markdownBodyClassName} .doc2vllm-mermaid-type {
+    color: rgba(var(--center-channel-color-rgb), 0.64);
+    flex: 1;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-toolbar-button {
-    background: rgba(var(--center-channel-color-rgb), 0.08);
-    border: 1px solid rgba(var(--center-channel-color-rgb), 0.14);
-    border-radius: 999px;
-    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: rgba(var(--center-channel-color-rgb), 0.72);
     cursor: pointer;
     font-size: 12px;
     font-weight: 600;
     line-height: 1;
-    padding: 6px 10px;
+    padding: 6px 8px;
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-toolbar-button:hover {
-    background: rgba(var(--center-channel-color-rgb), 0.12);
+    background: rgba(var(--center-channel-color-rgb), 0.08);
+    color: rgb(var(--center-channel-color-rgb));
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-error {
     color: var(--dnd-indicator);
     font-size: 12px;
     font-weight: 600;
-    margin-bottom: 8px;
+    padding: 8px 12px 0;
+}
+
+.doc2vllm-reasoning {
+    border-left: 2px solid rgba(var(--center-channel-color-rgb), 0.16);
+    color: rgba(var(--center-channel-color-rgb), 0.72);
+    font-size: 13px;
+    margin: 4px 0;
+    padding-left: 12px;
+}
+
+.doc2vllm-reasoning > summary {
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-rendered svg {
