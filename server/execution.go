@@ -889,14 +889,7 @@ func shouldStreamInitialOCR(cfg *runtimeConfiguration, bot BotDefinition, prepar
 }
 
 func shouldUseDoc2VLLMStreaming(cfg *runtimeConfiguration, bot BotDefinition) bool {
-	if cfg == nil || !cfg.EnableStreaming {
-		return false
-	}
-
-	// Multimodal OCR endpoints often advertise OpenAI compatibility but do not
-	// stream partial tokens reliably. For those bots, keep progress updates but
-	// use the stable non-streaming request path for the model call itself.
-	return bot.effectiveMode() != "multimodal"
+	return cfg != nil && cfg.EnableStreaming
 }
 
 func buildPreparedInputStatus(preparedInputs []preparedOCRInput) string {

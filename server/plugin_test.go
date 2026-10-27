@@ -208,7 +208,7 @@ func TestBuildDoc2VLLMChatRequestUsesModelDefaultMaxTokensWhenUnset(t *testing.T
 	require.Equal(t, "model_default", requestDebug.MaxTokensSource)
 }
 
-func TestShouldUseDoc2VLLMStreamingDisablesMultimodalBots(t *testing.T) {
+func TestShouldUseDoc2VLLMStreamingHonorsSettingForMultimodalBots(t *testing.T) {
 	cfg := &runtimeConfiguration{EnableStreaming: true}
 
 	ocrBot, err := (BotDefinition{Username: "ocr-bot", Mode: "ocr"}).normalize()
@@ -217,7 +217,10 @@ func TestShouldUseDoc2VLLMStreamingDisablesMultimodalBots(t *testing.T) {
 
 	multimodalBot, err := (BotDefinition{Username: "qwen-bot", Mode: "multimodal"}).normalize()
 	require.NoError(t, err)
+	require.True(t, shouldUseDoc2VLLMStreaming(cfg, multimodalBot))
+	cfg.EnableStreaming = false
 	require.False(t, shouldUseDoc2VLLMStreaming(cfg, multimodalBot))
+	require.False(t, shouldUseDoc2VLLMStreaming(nil, multimodalBot))
 }
 
 func TestConfigurationNormalizeAutoAllowsConfiguredBotAndRefinerHosts(t *testing.T) {
