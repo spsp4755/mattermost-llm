@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -27,16 +26,20 @@ const defaultDoc2VLLMFollowupPrompt = "Please answer using the extracted documen
 const defaultDoc2VLLMAttachmentUserPrompt = "Please process the attached document according to the system instructions."
 const defaultDoc2VLLMMultimodalPrompt = "Analyze the attached image or document and answer using only its visible contents."
 const defaultDoc2VLLMTextAttachmentPrompt = "Summarize the attached content and answer the user's request clearly."
-// richFormattingGuide is appended for output_mode "rich"; the webapp renders ```mermaid fences as diagrams.
+
+// Chat Markdown and rich replies use diagrams automatically when they clarify the answer.
 const richFormattingGuide = `[Response formatting]
 Format answers like a modern AI assistant, using Mattermost-flavored Markdown:
 - Start with a one or two sentence direct answer, then details. Use short "###" headings only for longer answers.
 - Use bullet lists for steps and options, and Markdown tables to compare items or summarize structured data.
-- When a process, architecture, sequence, timeline, hierarchy, state machine, or proportion would be clearer as a picture, add ONE Mermaid diagram in a fenced block that starts with ` + "```mermaid" + `.
+- Do not wait for the user to ask for a diagram. Decide whether a visual materially clarifies the explanation. When a process, architecture, sequence, timeline, hierarchy, state machine, or proportion would be clearer as a picture, add ONE Mermaid diagram in a fenced block that starts with ` + "```mermaid" + `.
   Good fits: flowchart LR/TD, sequenceDiagram, stateDiagram-v2, timeline, mindmap, pie, gantt, erDiagram, xychart-beta.
 - Do not add a diagram for simple factual answers or small talk.
-- Mermaid rules: keep it under 15 nodes; use simple ASCII ids (A, B, api_server); put any label containing spaces, non-English text or punctuation in double quotes, e.g. A["사용자 요청"] --> B["응답 생성"]; never use HTML tags, styles, or click handlers; do not put Markdown inside the diagram.
-- Briefly explain the diagram in one sentence before or after it.`
+- Mermaid rules: keep it at most 12 nodes; use simple ASCII ids (A, B, api_server); put any label containing spaces, non-English text or punctuation in double quotes, e.g. A["사용자 요청"] --> B["응답 생성"]; never use HTML tags, styles, or click handlers; do not put Markdown inside the diagram.
+- Visual quality: prefer 4-8 meaningful nodes and at most 12; short labels in the user's language, one clear reading direction, minimal crossing edges, and at most 3 logical groups. Prefer flowchart TD for narrow chat columns, sequenceDiagram for interactions, and stateDiagram-v2 for transitions.
+- Use concise node labels (about 20 characters); keep details in the accompanying text. Include accTitle and accDescr when supported for a useful accessible title and description. Never invent chart numbers: use only supplied data.
+- Do not use frontmatter, init directives, external links, custom styles, scripts or interactive handlers. The application supplies consistent colors and typography.
+- Briefly explain the diagram in one sentence before or after it. Include a short text takeaway so the explanation also works without the diagram.`
 
 const defaultDoc2VLLMConnectionProbePrompt = "Reply with the exact text: connection ok"
 
@@ -186,12 +189,6 @@ type assistantResponseParts struct {
 	Answer    string
 	Reasoning string
 }
-
-var (
-	thinkTagPattern       = regexp.MustCompile(`(?is)^\s*<think>\s*(.*?)\s*</think>\s*(.*)$`)
-	reasoningTagPattern   = regexp.MustCompile(`(?is)^\s*<reasoning>\s*(.*?)\s*</reasoning>\s*(.*)$`)
-	reasoningBlockPattern = regexp.MustCompile(`(?is)^\s*(?:#+\s*)?(?:reasoning|thinking)\s*:?\s*(.*?)\s*(?:#+\s*)?(?:final\s+answer|answer)\s*:?\s*(.*)$`)
-)
 
 func (e *doc2vllmCallError) Error() string {
 	if e == nil {
@@ -417,7 +414,7 @@ func buildDoc2VLLMChatRequest(
 
 func buildDoc2VLLMSystemPrompt(bot BotDefinition, documentContext string, hasAttachment bool) string {
 	prompt := buildBaseDoc2VLLMSystemPrompt(bot, documentContext, hasAttachment)
-	if bot.effectiveOutputMode() == "rich" {
+	if bot.usesAutomaticDiagrams() {
 		return strings.TrimSpace(prompt + "\n\n" + richFormattingGuide)
 	}
 	return prompt
@@ -678,6 +675,9 @@ func buildDoc2VLLMRequestBody(requestPayload doc2vllmChatRequest, bot BotDefinit
 		body[key] = value
 	}
 
+	if err := applyThinkingSettings(body, bot); err != nil {
+		return nil, err
+	}
 	return body, nil
 }
 
@@ -696,6 +696,7 @@ func parseDoc2VLLMExtraRequestJSON(raw string) (map[string]any, error) {
 	}
 
 	reservedKeys := map[string]struct{}{
+		"stream":             {},
 		"model":              {},
 		"messages":           {},
 		"temperature":        {},
@@ -769,11 +770,11 @@ func (p *Plugin) performDoc2VLLMRequest(
 		)
 	}
 	if response.StatusCode >= http.StatusBadRequest {
-		callErr := classifyDoc2VLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, responseBody)
+		callErr := classifyDoc2VLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, redactProviderBody(responseBody, bot.ShowReasoning))
 		return doc2vllmDocumentResult{}, response.StatusCode, attachDoc2VLLMDebug(
 			callErr,
 			requestDebug,
-			buildDoc2VLLMResponseDebug(response.StatusCode, response.Header, responseBody, callErr),
+			buildDoc2VLLMResponseDebug(response.StatusCode, response.Header, redactProviderBody(responseBody, bot.ShowReasoning), callErr),
 		)
 	}
 
@@ -790,7 +791,7 @@ func (p *Plugin) performDoc2VLLMRequest(
 		)
 		return doc2vllmDocumentResult{}, response.StatusCode, callErr.withDebug(
 			requestDebug,
-			buildDoc2VLLMResponseDebug(response.StatusCode, response.Header, responseBody, callErr),
+			buildDoc2VLLMResponseDebug(response.StatusCode, response.Header, redactProviderBody(responseBody, bot.ShowReasoning), callErr),
 		)
 	}
 	if strings.TrimSpace(parsed.Model) == "" {
@@ -799,7 +800,7 @@ func (p *Plugin) performDoc2VLLMRequest(
 
 	return doc2vllmDocumentResult{
 		Attachment: attachment,
-		Response:   parsed,
+		Response:   filterResponseReasoning(parsed, bot.ShowReasoning),
 	}, response.StatusCode, nil
 }
 
@@ -845,15 +846,15 @@ func (p *Plugin) performDoc2VLLMStreamRequest(
 
 	if response.StatusCode >= http.StatusBadRequest {
 		responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024))
-		callErr := classifyDoc2VLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, responseBody)
+		callErr := classifyDoc2VLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, redactProviderBody(responseBody, bot.ShowReasoning))
 		return doc2vllmDocumentResult{}, response.StatusCode, attachDoc2VLLMDebug(
 			callErr,
 			requestDebug,
-			buildDoc2VLLMResponseDebug(response.StatusCode, response.Header, responseBody, callErr),
+			buildDoc2VLLMResponseDebug(response.StatusCode, response.Header, redactProviderBody(responseBody, bot.ShowReasoning), callErr),
 		)
 	}
 
-	content, err := consumeOpenAITextStream(response.Body, onSnapshot)
+	content, err := consumeOpenAIStream(response.Body, onSnapshot, bot.ShowReasoning)
 	if err != nil {
 		callErr := newDoc2VLLMCallError(
 			"stream_decode_failed",
@@ -906,11 +907,7 @@ func extractDoc2VLLMResponseText(response doc2vllmOCRResponse) string {
 		return rendered
 	}
 
-	pretty, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return string(pretty)
+	return "최종 답변이 반환되지 않았습니다. 출력 토큰 한도와 모델의 reasoning parser 설정을 확인해 주세요."
 }
 
 func (c doc2vllmChoice) Text() string {
@@ -938,100 +935,30 @@ func extractChoiceResponseParts(choice doc2vllmChoice) assistantResponseParts {
 	if parts.Reasoning == "" {
 		parts.Reasoning = strings.TrimSpace(extractReasoningTextFromValue(choice.Message.Reasoning))
 	}
-	if parts.Answer == "" {
-		parts.Answer = strings.TrimSpace(choice.Text())
-	}
 
+	if parts.Reasoning == "" {
+		parts.Reasoning = typedReasoningText(choice.Message.Content)
+	}
 	inlineParts := splitInlineReasoningSections(parts.Answer)
 	if parts.Reasoning == "" {
 		parts.Reasoning = inlineParts.Reasoning
 	}
-	if inlineParts.Answer != "" {
-		parts.Answer = inlineParts.Answer
-	}
+	parts.Answer = inlineParts.Answer
 
 	parts.Answer = strings.TrimSpace(stripLeadingReasoning(parts.Answer, parts.Reasoning))
-	if normalizeComparableText(parts.Answer) == normalizeComparableText(parts.Reasoning) {
-		parts.Reasoning = ""
-	}
+
 	return parts
 }
 
 func extractNonReasoningTextFromValue(value any) string {
-	candidates := make([]string, 0, 8)
-	collectTextCandidatesFiltered(value, &candidates, false)
-	return longestNonEmptyCandidate(candidates)
+	return extractPrimaryStreamingContentText(value)
 }
 
 func extractReasoningTextFromValue(value any) string {
-	if text, ok := value.(string); ok {
+	if text := typedReasoningText(value); text != "" {
 		return strings.TrimSpace(text)
 	}
-	candidates := make([]string, 0, 8)
-	collectReasoningCandidates(value, &candidates)
-	return longestNonEmptyCandidate(candidates)
-}
-
-func collectTextCandidatesFiltered(value any, candidates *[]string, includeReasoning bool) {
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, nested := range typed {
-			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if isReasoningKey(lowerKey) {
-				if includeReasoning {
-					collectTextCandidatesFiltered(nested, candidates, true)
-				}
-				continue
-			}
-			if isLikelyTextKey(lowerKey) {
-				switch nestedValue := nested.(type) {
-				case string:
-					*candidates = append(*candidates, nestedValue)
-				case map[string]any, []any:
-					collectTextCandidatesFiltered(nestedValue, candidates, includeReasoning)
-				}
-				continue
-			}
-			collectTextCandidatesFiltered(nested, candidates, includeReasoning)
-		}
-	case []any:
-		for _, item := range typed {
-			collectTextCandidatesFiltered(item, candidates, includeReasoning)
-		}
-	case string:
-		if strings.TrimSpace(typed) != "" {
-			*candidates = append(*candidates, typed)
-		}
-	}
-}
-
-func collectReasoningCandidates(value any, candidates *[]string) {
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, nested := range typed {
-			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if isReasoningKey(lowerKey) {
-				switch nestedValue := nested.(type) {
-				case string:
-					*candidates = append(*candidates, nestedValue)
-				case map[string]any, []any:
-					collectTextCandidatesFiltered(nestedValue, candidates, true)
-				}
-			}
-			collectReasoningCandidates(nested, candidates)
-		}
-	case []any:
-		for _, item := range typed {
-			collectReasoningCandidates(item, candidates)
-		}
-	case string:
-		if strings.TrimSpace(typed) != "" {
-			inlineParts := splitInlineReasoningSections(typed)
-			if inlineParts.Reasoning != "" {
-				*candidates = append(*candidates, inlineParts.Reasoning)
-			}
-		}
-	}
+	return strings.TrimSpace(extractPrimaryStreamingContentText(value))
 }
 
 func longestNonEmptyCandidate(candidates []string) string {
@@ -1054,25 +981,6 @@ func isReasoningKey(key string) bool {
 		strings.Contains(key, "thought")
 }
 
-func splitInlineReasoningSections(text string) assistantResponseParts {
-	text = strings.TrimSpace(strings.ToValidUTF8(text, ""))
-	if text == "" {
-		return assistantResponseParts{}
-	}
-
-	for _, pattern := range []*regexp.Regexp{thinkTagPattern, reasoningTagPattern, reasoningBlockPattern} {
-		matches := pattern.FindStringSubmatch(text)
-		if len(matches) == 3 {
-			return assistantResponseParts{
-				Reasoning: strings.TrimSpace(matches[1]),
-				Answer:    strings.TrimSpace(matches[2]),
-			}
-		}
-	}
-
-	return assistantResponseParts{Answer: text}
-}
-
 func stripLeadingReasoning(answer, reasoning string) string {
 	answer = strings.TrimSpace(answer)
 	reasoning = strings.TrimSpace(reasoning)
@@ -1083,13 +991,6 @@ func stripLeadingReasoning(answer, reasoning string) string {
 		return strings.TrimSpace(answer[len(reasoning):])
 	}
 	return answer
-}
-
-func normalizeComparableText(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	value = strings.ReplaceAll(value, "\r\n", "\n")
-	value = strings.ReplaceAll(value, "\r", "\n")
-	return value
 }
 
 func renderAssistantResponseParts(parts assistantResponseParts) string {

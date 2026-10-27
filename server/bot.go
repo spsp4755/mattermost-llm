@@ -23,6 +23,10 @@ type BotDefinition struct {
 	AuthToken         string          `json:"auth_token,omitempty"`
 	Model             string          `json:"model,omitempty"`
 	Mode              string          `json:"mode,omitempty"`
+	ShowReasoning     bool            `json:"show_reasoning,omitempty"`
+	ThinkingMode      string          `json:"thinking_mode,omitempty"`
+	ThinkingParameter string          `json:"thinking_parameter,omitempty"`
+	AutoOpenThread    *bool           `json:"auto_open_thread,omitempty"`
 	OutputMode        string          `json:"output_mode,omitempty"`
 	OCRPrompt         string          `json:"ocr_prompt,omitempty"`
 	Temperature       float64         `json:"temperature,omitempty"`
@@ -71,6 +75,9 @@ func (b BotDefinition) normalize() (BotDefinition, error) {
 	b.Model = defaultIfEmpty(strings.TrimSpace(b.Model), defaultDoc2VLLMModel)
 	b.Mode = normalizeBotMode(b.Mode)
 	b.OutputMode = normalizeOutputMode(b.OutputMode)
+	if err := validateThinkingSettings(b); err != nil {
+		return BotDefinition{}, err
+	}
 	b.OCRPrompt = strings.TrimSpace(b.OCRPrompt)
 	b.Temperature = normalizeDoc2VLLMTemperature(b.Temperature)
 	b.MaxTokens = normalizeOptionalPositive(b.MaxTokens)
@@ -403,4 +410,8 @@ func botUsageExamples(bot BotDefinition) []string {
 		fmt.Sprintf("- `@%s 발표 자료 핵심 문구만 모아줘` 와 함께 PPTX 업로드", bot.Username),
 		fmt.Sprintf("- DM `%s` 에 이미지/PDF/DOCX/XLSX/PPTX 파일을 붙여 전송", bot.Username),
 	}
+}
+
+func (b BotDefinition) usesAutomaticDiagrams() bool {
+	return b.effectiveOutputMode() == "rich" || (b.effectiveOutputMode() == "markdown" && b.effectiveMode() != "ocr")
 }

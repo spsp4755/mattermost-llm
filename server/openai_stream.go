@@ -10,51 +10,76 @@ import (
 )
 
 func consumeOpenAITextStream(body io.Reader, onSnapshot func(string) error) (string, error) {
+	return consumeOpenAIStream(body, onSnapshot, false)
+}
+
+func consumeOpenAIStream(body io.Reader, onSnapshot func(string) error, showReasoning bool) (string, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
-
-	var builder strings.Builder
+	var answer, reasoning strings.Builder
+	last := ""
+	snapshot := func() string {
+		parts := splitInlineReasoningSections(answer.String())
+		if showReasoning {
+			parts.Reasoning = strings.TrimSpace(reasoning.String() + "\n" + parts.Reasoning)
+		} else {
+			parts.Reasoning = ""
+		}
+		return renderAssistantResponseParts(parts)
+	}
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, ":") {
-			continue
-		}
 		if !strings.HasPrefix(line, "data:") {
 			continue
 		}
-
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" {
-			continue
-		}
-		if payload == "[DONE]" {
+		raw := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if raw == "[DONE]" {
 			break
 		}
-
-		delta, err := extractStreamingDeltaText([]byte(payload))
-		if err != nil {
-			return strings.TrimSpace(builder.String()), err
-		}
-		if delta == "" {
+		if raw == "" {
 			continue
 		}
-
-		builder.WriteString(delta)
-		if onSnapshot != nil {
-			snapshot := strings.TrimSpace(renderAssistantResponseParts(splitInlineReasoningSections(builder.String())))
-			if snapshot == "" {
-				snapshot = strings.TrimSpace(builder.String())
-			}
-			if err := onSnapshot(snapshot); err != nil {
-				return strings.TrimSpace(builder.String()), err
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+			return "", fmt.Errorf("failed to decode streaming payload: %w", err)
+		}
+		if payload["error"] != nil {
+			return "", fmt.Errorf("LLM returned a streaming error")
+		}
+		choices, _ := payload["choices"].([]any)
+		if len(choices) == 0 {
+			continue
+		} // Usage-only frames have no choices.
+		choice, _ := choices[0].(map[string]any)
+		answer.WriteString(extractStreamChoiceText(choice))
+		if showReasoning {
+			for _, key := range []string{"delta", "message"} {
+				item, ok := choice[key].(map[string]any)
+				if !ok {
+					continue
+				}
+				reasoning.WriteString(typedReasoningText(item["content"]))
+				for _, field := range []string{"reasoning_content", "reasoning", "thinking"} {
+					if value, ok := item[field]; ok {
+						reasoning.WriteString(extractPrimaryStreamingContentText(value))
+						break
+					}
+				}
+				break
 			}
 		}
+		next := snapshot()
+		if onSnapshot != nil && next != "" && next != last {
+			if err := onSnapshot(next); err != nil {
+				return "", err
+			}
+			last = next
+		}
 	}
-
 	if err := scanner.Err(); err != nil {
-		return strings.TrimSpace(builder.String()), err
+		return "", err
 	}
-	return strings.TrimSpace(builder.String()), nil
+	return snapshot(), nil
 }
 
 func extractStreamingDeltaText(raw []byte) (string, error) {
@@ -107,6 +132,9 @@ func extractPrimaryStreamingContentText(value any) string {
 	case string:
 		return typed
 	case map[string]any:
+		if kind, _ := typed["type"].(string); isReasoningKey(strings.ToLower(kind)) {
+			return ""
+		}
 		if content, ok := typed["content"]; ok {
 			return extractPrimaryStreamingContentText(content)
 		}

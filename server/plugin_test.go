@@ -464,7 +464,7 @@ func TestBuildDoc2VLLMChatRequestUsesGenericChatPromptForTextMode(t *testing.T) 
 	systemContent, ok := requestPayload.Messages[0].Content.(string)
 	require.True(t, ok)
 	require.Contains(t, systemContent, "helpful AI assistant")
-	require.Equal(t, defaultDoc2VLLMChatPrompt, requestDebug.SystemPrompt)
+	require.Contains(t, requestDebug.SystemPrompt, defaultDoc2VLLMChatPrompt)
 }
 
 func TestBuildDoc2VLLMChatRequestUsesConfiguredPromptForTextMode(t *testing.T) {
@@ -488,8 +488,8 @@ func TestBuildDoc2VLLMChatRequestUsesConfiguredPromptForTextMode(t *testing.T) {
 	require.NoError(t, err)
 	systemContent, ok := requestPayload.Messages[0].Content.(string)
 	require.True(t, ok)
-	require.Equal(t, "Answer as a concise project copilot.", systemContent)
-	require.Equal(t, "Answer as a concise project copilot.", requestDebug.SystemPrompt)
+	require.True(t, strings.HasPrefix(systemContent, "Answer as a concise project copilot."))
+	require.Contains(t, requestDebug.SystemPrompt, "Answer as a concise project copilot.")
 }
 
 func TestBuildDoc2VLLMImageDataURLRejectsNonImages(t *testing.T) {
@@ -1117,6 +1117,6 @@ func TestBuildDoc2VLLMSystemPromptAddsRichFormattingGuide(t *testing.T) {
 	require.True(t, strings.HasPrefix(prompt, "Be concise."))
 	require.Contains(t, prompt, "```mermaid")
 
-	bot.OutputMode = "markdown"
+	bot.OutputMode = "text"
 	require.Equal(t, "Be concise.", buildDoc2VLLMSystemPrompt(bot, "", false))
 }

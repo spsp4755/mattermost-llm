@@ -243,3 +243,13 @@ describe('loadConfig', () => {
         expect(built.bots[0].mode).toBe('chat');
     });
 });
+
+test('round-trips independent reasoning controls and explicit thread opt-out', () => {
+    const config = normalizeConfig(draftConfig);
+    Object.assign(config.bots[0], {show_reasoning: true, thinking_mode: 'disabled', thinking_parameter: 'chat_template_kwargs.enable_thinking', auto_open_thread: false});
+    expect(buildConfig(config).bots[0]).toMatchObject({show_reasoning: true, thinking_mode: 'disabled', thinking_parameter: 'chat_template_kwargs.enable_thinking', auto_open_thread: false});
+});
+
+test('old bot settings default to hidden reasoning and auto-open', () => {
+    expect(buildConfig(normalizeConfig(draftConfig)).bots[0]).toMatchObject({show_reasoning: false, thinking_mode: 'default', auto_open_thread: true});
+});

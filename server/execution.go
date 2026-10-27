@@ -143,6 +143,9 @@ func (p *Plugin) executeBotAndPost(ctx context.Context, request BotRunRequest) (
 	if progressErr != nil {
 		p.API.LogWarn("Failed to create Doc2VLLM progress post", "error", progressErr, "correlation_id", correlationID)
 	}
+	if progress != nil {
+		p.publishThreadOpen(request, *bot, progress.post)
+	}
 	stage, detail := buildRequestIntakeProgress(prompt != "", len(request.FileIDs))
 	_ = p.updateProgressPost(progress, "첨부 파일 확인", "첨부 파일과 프롬프트를 확인하고 있습니다.", "", startedAt, true)
 
@@ -922,14 +925,27 @@ func buildPreparedInputStatus(preparedInputs []preparedOCRInput) string {
 }
 
 func buildDocumentResponseOutput(mode, prompt string, results []doc2vllmDocumentResult, failures []documentProcessingFailure, maxLength int) string {
+	answers := make([]doc2vllmDocumentResult, len(results))
+	reasons := []string{}
+	for i, result := range results {
+		parts := extractDoc2VLLMResponseParts(result.Response)
+		if parts.Reasoning != "" {
+			reasons = append(reasons, "### "+result.Attachment.Name+"\n\n"+parts.Reasoning)
+		}
+		answers[i] = result
+		answers[i].Response.Choices = append([]doc2vllmChoice(nil), result.Response.Choices...)
+		answers[i].Response = filterResponseReasoning(answers[i].Response, false)
+	}
+	var output string
 	switch normalizeOutputMode(mode) {
 	case "text":
-		return buildDocumentResponseText(prompt, results, failures, maxLength)
+		output = buildDocumentResponseText(prompt, answers, failures, maxLength)
 	case "json":
-		return buildDocumentResponseJSON(prompt, results, failures, maxLength)
+		output = buildDocumentResponseJSON(prompt, answers, failures, maxLength)
 	default:
-		return buildDocumentResponseMarkdown(prompt, results, failures, maxLength)
+		output = buildDocumentResponseMarkdown(prompt, answers, failures, maxLength)
 	}
+	return truncateString(renderAssistantResponseParts(assistantResponseParts{Answer: output, Reasoning: strings.Join(reasons, "\n\n")}), maxLength)
 }
 
 func buildDocumentResponseMarkdown(_ string, results []doc2vllmDocumentResult, failures []documentProcessingFailure, maxLength int) string {
@@ -1313,6 +1329,17 @@ func (p *Plugin) ensureBotInChannel(channelID, botUserID string) error {
 	if _, appErr := p.API.GetChannelMember(channelID, botUserID); appErr == nil {
 		return nil
 	}
+	channel, appErr := p.API.GetChannel(channelID)
+	if appErr != nil {
+		return fmt.Errorf("failed to get bot channel: %w", appErr)
+	}
+	if channel.TeamId != "" {
+		if member, err := p.API.GetTeamMember(channel.TeamId, botUserID); err != nil || member == nil || member.DeleteAt != 0 {
+			if _, err := p.API.CreateTeamMember(channel.TeamId, botUserID); err != nil {
+				return fmt.Errorf("failed to add bot to team: %w", err)
+			}
+		}
+	}
 	if _, appErr := p.API.AddUserToChannel(channelID, botUserID, ""); appErr != nil {
 		return fmt.Errorf("failed to add bot to channel: %w", appErr)
 	}
@@ -1331,22 +1358,22 @@ func (p *Plugin) postSuccess(channel *model.Channel, rootID string, account botA
 	if strings.TrimSpace(debugView.Request) != "" {
 		props["doc2vllm_request_input"] = debugView.Request
 	}
-	if strings.TrimSpace(debugView.Output) != "" {
+	if account.Definition.ShowReasoning && strings.TrimSpace(debugView.Output) != "" {
 		props["doc2vllm_response_output"] = debugView.Output
 	}
 	return p.upsertBotPost(channel, rootID, account, existing, buildBotResponseMessage(output, correlationID, apiDuration), props)
 }
 
 func buildVLLMFallbackOutput(documentContext, notice string) string {
-	parts := []string{
-		"_" + strings.TrimSpace(notice) + "_",
-		"",
-		strings.TrimSpace(documentContext),
-	}
-	return strings.TrimSpace(strings.Join(parts, "\n"))
+	parts := splitInlineReasoningSections(documentContext)
+	parts.Answer = "_" + strings.TrimSpace(notice) + "_\n\n" + parts.Answer
+	return renderAssistantResponseParts(parts)
 }
 
 func (p *Plugin) postFailure(channel *model.Channel, rootID string, account botAccount, existing *model.Post, correlationID string, failure executionFailureView) (*model.Post, error) {
+	if !account.Definition.ShowReasoning {
+		failure.OutputDebug = ""
+	}
 	return p.upsertBotPost(channel, rootID, account, existing, buildBotFailureMessage(account.Definition, correlationID, failure), map[string]any{
 		"from_bot":                 "true",
 		"doc2vllm_bot_id":          account.Definition.ID,

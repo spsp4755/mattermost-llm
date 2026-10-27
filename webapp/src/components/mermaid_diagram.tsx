@@ -1,5 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 
+import DialogPortal from './dialog_portal';
+
 import {detectDiagramType, renderMermaidDefinition} from '../mermaid_rendering';
 
 type Props = {
@@ -14,6 +16,7 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
     const copyResetTimerRef = useRef<number | null>(null);
     const [error, setError] = useState('');
     const [popupError, setPopupError] = useState('');
+    const [zoom, setZoom] = useState(100);
     const [copied, setCopied] = useState(false);
     const [showSource, setShowSource] = useState(false);
     const [showRenderedPopup, setShowRenderedPopup] = useState(false);
@@ -39,12 +42,6 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
             return () => undefined;
         }
 
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setShowRenderedPopup(false);
-            }
-        };
-        document.addEventListener('keydown', onKeyDown);
         const cleanupRender = renderIntoContainer({
             containerRef: popupContainerRef,
             definition,
@@ -54,7 +51,6 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
             variant: 'popup',
         });
         return () => {
-            document.removeEventListener('keydown', onKeyDown);
             cleanupRender();
         };
     }, [definition, index, postID, showRenderedPopup]);
@@ -132,7 +128,7 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                             </button>
                             <button
                                 className='doc2vllm-mermaid-toolbar-button'
-                                onClick={() => setShowRenderedPopup(true)}
+                                onClick={() => { setZoom(100); setShowRenderedPopup(true); }}
                                 type='button'
                             >
                                 {'확대'}
@@ -155,6 +151,7 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                 )}
             </div>
             {showRenderedPopup && (
+                <DialogPortal onClose={() => setShowRenderedPopup(false)}>
                 <div
                     className='doc2vllm-mermaid-modal-backdrop'
                     onClick={() => setShowRenderedPopup(false)}
@@ -162,6 +159,7 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                 >
                     <div
                         aria-modal='true'
+                        aria-label={`${diagramType} 다이어그램 확대`}
                         className='doc2vllm-mermaid-modal doc2vllm-mermaid-render-modal'
                         onClick={(event) => event.stopPropagation()}
                         role='dialog'
@@ -169,6 +167,9 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                         <div className='doc2vllm-mermaid-modal-header'>
                             <strong>{diagramType}</strong>
                             <div className='doc2vllm-mermaid-modal-actions'>
+                                <button className='doc2vllm-mermaid-toolbar-button' aria-label='축소' disabled={zoom <= 50} onClick={() => setZoom((value) => Math.max(50, value - 25))} type='button'>{'−'}</button>
+                                <button className='doc2vllm-mermaid-toolbar-button' aria-label='화면에 맞추기' onClick={() => setZoom(100)} type='button'>{`${zoom}%`}</button>
+                                <button className='doc2vllm-mermaid-toolbar-button' aria-label='확대' disabled={zoom >= 300} onClick={() => setZoom((value) => Math.min(300, value + 25))} type='button'>{'+'}</button>
                                 <button
                                     className='doc2vllm-mermaid-toolbar-button'
                                     onClick={handleCopy}
@@ -196,11 +197,13 @@ export default function MermaidDiagram({definition, postID, index}: Props) {
                                     className='doc2vllm-mermaid-rendered doc2vllm-mermaid-rendered-popup'
                                     data-testid='doc2vllm-mermaid-diagram-popup'
                                     ref={popupContainerRef}
+                                    style={{width: `${zoom}%`, height: `calc(${80 * zoom / 100}vh - ${110 * zoom / 100}px)`, maxHeight: `${610 * zoom / 100}px`}}
                                 />
                             )}
                         </div>
                     </div>
                 </div>
+                </DialogPortal>
             )}
         </>
     );

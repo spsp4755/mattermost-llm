@@ -111,7 +111,7 @@ export function buildMermaidConfig() {
 
     // Mermaid 12 defaults to the shadowed "neo" look and ELK layout; classic + dagre stay legible inside chat posts.
     // suppressErrorRendering stops mermaid from leaving its "Syntax error" bomb in document.body; we show the code instead.
-    const base = {startOnLoad: false, securityLevel: 'strict' as const, fontFamily: 'inherit', look: 'classic' as const, layout: 'dagre', suppressErrorRendering: true};
+    const base = {startOnLoad: false, securityLevel: 'strict' as const, fontFamily: 'Arial, Noto Sans KR, sans-serif', look: 'classic' as const, layout: 'dagre', suppressErrorRendering: true};
     if (parsed.some((color) => !color)) {
         return {...base, theme: 'neutral' as const};
     }
@@ -124,8 +124,8 @@ export function buildMermaidConfig() {
         themeVariables: {
             darkMode,
             background: bg,
-            fontFamily: 'inherit',
-            fontSize: '14px',
+            fontFamily: 'Arial, Noto Sans KR, sans-serif',
+            fontSize: '15px',
             primaryColor: mixHex(accentRGB, bgRGB, 0.14),
             primaryBorderColor: mixHex(accentRGB, bgRGB, 0.6),
             primaryTextColor: fg,
@@ -158,8 +158,8 @@ export function buildMermaidConfig() {
             pieTitleTextColor: fg,
             pieLegendTextColor: fg,
         },
-        flowchart: {curve: 'basis' as const, padding: 16, htmlLabels: true},
-        sequence: {mirrorActors: false},
+        flowchart: {curve: 'basis' as const, padding: 20, nodeSpacing: 36, rankSpacing: 48, htmlLabels: false},
+        sequence: {mirrorActors: false, useMaxWidth: true, wrap: true, actorMargin: 40, messageMargin: 36},
     };
 }
 

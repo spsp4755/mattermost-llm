@@ -5,6 +5,7 @@ import type {Store} from 'redux';
 import type {GlobalState} from '@mattermost/types/store';
 
 import {setSiteURL} from './client';
+import {createThreadOpenHandler} from './thread_open';
 import ConfigSetting from './components/config_setting';
 import Doc2VLLMBotPost from './components/doc2vllm_bot_post';
 import PluginErrorBoundary from './components/error_boundary';
@@ -74,6 +75,8 @@ export default class Plugin {
                 this.postEventListener.handlePostUpdateWebsockets(msg as any);
             },
         );
+
+        registry.registerWebSocketEventHandler(buildPluginWebSocketEventName(manifest.id, 'open_thread'), createThreadOpenHandler(store));
 
         if (registry.registerPostTypeComponent) {
             registry.registerPostTypeComponent('custom_doc2vllm_bot', (props: any) => (

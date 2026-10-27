@@ -15,6 +15,7 @@ import (
 )
 
 type vllmServiceConfig struct {
+	ShowReasoning bool
 	BaseURL       string
 	ParsedBaseURL *url.URL
 	APIKey        string
@@ -47,8 +48,10 @@ type vllmChatChoice struct {
 }
 
 type vllmChoiceMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Reasoning        any    `json:"reasoning,omitempty"`
+	ReasoningContent any    `json:"reasoning_content,omitempty"`
+	Role             string `json:"role"`
+	Content          any    `json:"content"`
 }
 
 type vllmCallError struct {
@@ -136,12 +139,17 @@ func (cfg *runtimeConfiguration) serviceConfigForVLLMBot(bot BotDefinition) (vll
 		return vllmServiceConfig{}, fmt.Errorf("bot %q requires vLLM model when vLLM URL is configured", bot.Username)
 	}
 
+	prompt := strings.TrimSpace(bot.VLLMPrompt)
+	if bot.usesAutomaticDiagrams() {
+		prompt += "\n\n" + richFormattingGuide
+	}
 	return vllmServiceConfig{
+		ShowReasoning: bot.ShowReasoning,
 		BaseURL:       normalizedURL,
 		ParsedBaseURL: parsedURL,
 		APIKey:        strings.TrimSpace(bot.VLLMAPIKey),
 		Model:         strings.TrimSpace(bot.VLLMModel),
-		Prompt:        strings.TrimSpace(bot.VLLMPrompt),
+		Prompt:        prompt,
 		Scope:         bot.effectiveVLLMScope(),
 		Timeout:       cfg.DefaultTimeout,
 	}, nil
@@ -242,11 +250,11 @@ func (p *Plugin) invokeVLLMPostProcess(
 	}
 
 	if response.StatusCode >= http.StatusBadRequest {
-		callErr := classifyVLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, responseBody)
+		callErr := classifyVLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, redactProviderBody(responseBody, service.ShowReasoning))
 		return "", "", attachVLLMDebug(
 			callErr,
 			requestDebug,
-			buildVLLMResponseDebug(response.StatusCode, response.Header, responseBody, callErr),
+			buildVLLMResponseDebug(response.StatusCode, response.Header, redactProviderBody(responseBody, service.ShowReasoning), callErr),
 		)
 	}
 
@@ -263,11 +271,11 @@ func (p *Plugin) invokeVLLMPostProcess(
 		)
 		return "", "", callErr.withDebug(
 			requestDebug,
-			buildVLLMResponseDebug(response.StatusCode, response.Header, responseBody, callErr),
+			buildVLLMResponseDebug(response.StatusCode, response.Header, redactProviderBody(responseBody, service.ShowReasoning), callErr),
 		)
 	}
 
-	content := extractVLLMResponseText(parsed)
+	content := extractVLLMResponseTextWithPolicy(parsed, service.ShowReasoning)
 	if content == "" {
 		callErr := newVLLMCallError(
 			"empty_response",
@@ -280,7 +288,7 @@ func (p *Plugin) invokeVLLMPostProcess(
 		)
 		return "", "", callErr.withDebug(
 			requestDebug,
-			buildVLLMResponseDebug(response.StatusCode, response.Header, responseBody, callErr),
+			buildVLLMResponseDebug(response.StatusCode, response.Header, redactProviderBody(responseBody, service.ShowReasoning), callErr),
 		)
 	}
 
@@ -340,15 +348,15 @@ func (p *Plugin) invokeVLLMPostProcessStream(
 
 	if response.StatusCode >= http.StatusBadRequest {
 		responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024))
-		callErr := classifyVLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, responseBody)
+		callErr := classifyVLLMHTTPError(service.BaseURL, response.StatusCode, response.Header, redactProviderBody(responseBody, service.ShowReasoning))
 		return "", "", time.Since(startedAt), attachVLLMDebug(
 			callErr,
 			requestDebug,
-			buildVLLMResponseDebug(response.StatusCode, response.Header, responseBody, callErr),
+			buildVLLMResponseDebug(response.StatusCode, response.Header, redactProviderBody(responseBody, service.ShowReasoning), callErr),
 		)
 	}
 
-	content, err := consumeOpenAITextStream(response.Body, onSnapshot)
+	content, err := consumeOpenAIStream(response.Body, onSnapshot, service.ShowReasoning)
 	if err != nil {
 		callErr := newVLLMCallError(
 			"stream_decode_failed",
@@ -499,29 +507,21 @@ func buildVLLMResponseDebug(statusCode int, headers http.Header, body []byte, ca
 }
 
 func extractVLLMResponseText(response vllmChatResponse) string {
+	return extractVLLMResponseTextWithPolicy(response, false)
+}
+
+func extractVLLMResponseTextWithPolicy(response vllmChatResponse, show bool) string {
 	for _, choice := range response.Choices {
-		if text := strings.TrimSpace(choice.Text); text != "" {
-			return text
+		content := choice.Message.Content
+		if choice.Text != "" {
+			content = choice.Text
 		}
-		switch content := choice.Message.Content.(type) {
-		case string:
-			if strings.TrimSpace(content) != "" {
-				return content
-			}
-		case []any:
-			parts := make([]string, 0, len(content))
-			for _, item := range content {
-				if text := extractTextFromValue(item); text != "" {
-					parts = append(parts, text)
-				}
-			}
-			if len(parts) > 0 {
-				return strings.Join(parts, "\n")
-			}
-		default:
-			if text := extractTextFromValue(content); text != "" {
-				return text
-			}
+		parts := extractChoiceResponseParts(doc2vllmChoice{Message: doc2vllmChoiceMessage{Content: content, Reasoning: choice.Message.Reasoning, ReasoningContent: choice.Message.ReasoningContent}})
+		if !show {
+			parts.Reasoning = ""
+		}
+		if text := renderAssistantResponseParts(parts); text != "" {
+			return text
 		}
 	}
 	return ""

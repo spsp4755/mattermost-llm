@@ -3,6 +3,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import type {WebSocketMessage} from '@mattermost/client';
 
 import PostText from './post_text';
+import DialogPortal from './dialog_portal';
 
 import {splitResponseParts} from '../response_parts';
 import {isDoc2VLLMAwaitingFirstChunk} from '../streaming';
@@ -52,21 +53,6 @@ export default function Doc2VLLMBotPost(props: Props) {
         setShowDebugModal(false);
     }, [props.post.id, props.post.message, props.post.props?.doc2vllm_streaming, props.post.props?.doc2vllm_stream_status, props.post.props?.doc2vllm_stream_placeholder, props.post.props?.doc2vllm_request_input, props.post.props?.doc2vllm_response_output, props.post.props?.doc2vllm_error_input, props.post.props?.doc2vllm_error_output]);
 
-    useEffect(() => {
-        if (!showDebugModal) {
-            return undefined;
-        }
-
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setShowDebugModal(false);
-            }
-        };
-
-        document.addEventListener('keydown', onKeyDown);
-        return () => document.removeEventListener('keydown', onKeyDown);
-    }, [showDebugModal]);
-
     const listener = useMemo(() => ((msg: WebSocketMessage<PostUpdateData>) => {
         const data = msg?.data || {};
         if (data.post_id !== props.post.id) {
@@ -107,7 +93,7 @@ export default function Doc2VLLMBotPost(props: Props) {
                 postID={props.post.id}
                 showCursor={generating && !precontent}
             />
-            {parts.reasoning && (
+            {parts.reasoning && props.post?.props?.doc2vllm_show_reasoning === true && (
                 <details className='doc2vllm-reasoning'>
                     <summary>{'생각 과정 보기'}</summary>
                     <PostText
@@ -138,8 +124,10 @@ export default function Doc2VLLMBotPost(props: Props) {
                 </div>
             )}
             {showDebugModal && canShowDebug && (
+                <DialogPortal onClose={() => setShowDebugModal(false)}>
                 <div
                     aria-modal='true'
+                    aria-label={debugModalTitle}
                     role='dialog'
                     style={modalBackdropStyle}
                     onClick={() => setShowDebugModal(false)}
@@ -168,6 +156,7 @@ export default function Doc2VLLMBotPost(props: Props) {
                         </div>
                     </div>
                 </div>
+                </DialogPortal>
             )}
         </div>
     );

@@ -249,7 +249,8 @@ function ensureStreamingStyles() {
     border-bottom: 1px solid rgba(var(--center-channel-color-rgb), 0.08);
     display: flex;
     gap: 4px;
-    padding: 6px 8px 6px 12px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-type {
@@ -316,10 +317,11 @@ function ensureStreamingStyles() {
     justify-content: center;
     padding: 20px;
     position: fixed;
-    z-index: 1000;
+    z-index: 2147483000;
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-modal {
+    color: var(--center-channel-color);
     background: var(--center-channel-bg);
     border-radius: 16px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
@@ -365,7 +367,25 @@ function ensureStreamingStyles() {
 }
 
 .${markdownBodyClassName} .doc2vllm-mermaid-rendered-popup {
-    min-height: 320px;
+    margin: 0 auto;
+}
+
+.${markdownBodyClassName} .doc2vllm-mermaid-rendered-popup svg {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+}
+.${markdownBodyClassName} .doc2vllm-mermaid-toolbar-button:focus-visible {
+    outline: 2px solid var(--button-bg);
+    outline-offset: 2px;
+}
+.${markdownBodyClassName} .doc2vllm-mermaid-toolbar-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.${markdownBodyClassName} .doc2vllm-mermaid-modal-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 `;
     document.head.appendChild(style);

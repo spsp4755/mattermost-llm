@@ -136,6 +136,10 @@ type DraftBot = {
     model: string;
     mode: string;
     output_mode: string;
+    show_reasoning: boolean;
+    thinking_mode: string;
+    thinking_parameter: string;
+    auto_open_thread: boolean;
     ocr_prompt: string;
     temperature: number;
     max_tokens: OptionalPositiveNumber;
@@ -421,6 +425,31 @@ export default function ConfigSetting(props: Props) {
                                         </select>
                                     </Field>
                                 </div>
+                                <div style={row3}>
+                                    <Field label={'생각 과정 표시'} help={'숨김은 새 응답의 reasoning을 서버에서 제거합니다. 기존 게시물은 변경하지 않습니다.'}>
+                                        <select disabled={disabled} style={field} value={bot.show_reasoning ? 'show' : 'hide'} onChange={(e) => updateBot(bot.local_id, {show_reasoning: e.target.value === 'show'})}>
+                                            <option value='hide'>{'숨김 (답변만)'}</option>
+                                            <option value='show'>{'접어서 표시'}</option>
+                                        </select>
+                                    </Field>
+                                    <Field label={'Thinking 생성'} help={'표시와 별개입니다. 모델·서빙 엔진이 지원해야 적용됩니다. 후처리 모델은 자체 생성 기본값을 사용합니다.'}>
+                                        <select disabled={disabled} style={field} value={bot.thinking_mode} onChange={(e) => updateBot(bot.local_id, {thinking_mode: e.target.value})}>
+                                            <option value='default'>{'모델 기본값 / 추가 JSON'}</option>
+                                            <option value='disabled'>{'끄기'}</option>
+                                            <option value='enabled'>{'켜기'}</option>
+                                        </select>
+                                    </Field>
+                                    <Field label={'Thinking 요청 형식'} help={'모델 이름이 아닌 API 서버의 지원 형식으로 선택하세요. 명시한 생성 설정이 추가 JSON의 같은 항목보다 우선합니다.'}>
+                                        <select disabled={disabled} style={field} value={bot.thinking_parameter} onChange={(e) => updateBot(bot.local_id, {thinking_parameter: e.target.value})}>
+                                            <option value=''>{'선택하세요'}</option>
+                                            <option value='chat_template_kwargs.enable_thinking'>{'chat_template_kwargs.enable_thinking (vLLM 등)'}</option>
+                                            <option value='chat_template_kwargs.thinking'>{'chat_template_kwargs.thinking'}</option>
+                                            <option value='thinking.type'>{'thinking.type (DeepSeek / GLM / Kimi API 등)'}</option>
+                                            <option value='enable_thinking'>{'enable_thinking'}</option>
+                                        </select>
+                                    </Field>
+                                </div>
+                                <label><input disabled={disabled} type='checkbox' checked={bot.auto_open_thread} onChange={(e) => updateBot(bot.local_id, {auto_open_thread: e.target.checked})}/>{' 질문한 사용자에게 답변 스레드 자동 열기'}</label>
                                 <Field label={T.systemPrompt}><textarea disabled={disabled} style={{...field, minHeight: 120}} value={bot.ocr_prompt} placeholder={defaultAttachmentInstruction(bot.mode)} onChange={(e) => updateBot(bot.local_id, {ocr_prompt: e.target.value})}/></Field>
                                 <div style={row3}>
                                     <Field label={'temperature'} help={T.directInput}><input disabled={disabled} type='number' min={0} max={2} step='0.1' style={field} value={String(bot.temperature)} onChange={(e) => updateBot(bot.local_id, {temperature: numRange(e.target.value, 0, 0, 2)})}/></Field>
@@ -653,6 +682,10 @@ export function buildConfig(config: DraftConfig): AdminPluginConfig {
             model: text(item.model),
             mode: normalizeMode(item.mode),
             output_mode: text(item.output_mode) || 'markdown',
+            show_reasoning: Boolean(item.show_reasoning),
+            thinking_mode: text(item.thinking_mode) || 'default',
+            thinking_parameter: text(item.thinking_parameter),
+            auto_open_thread: item.auto_open_thread !== false,
             ocr_prompt: text(item.ocr_prompt),
             temperature: numRange(item.temperature, 0, 0, 2),
             max_tokens: optionalPositiveValue(item.max_tokens),
@@ -677,7 +710,7 @@ export function buildConfig(config: DraftConfig): AdminPluginConfig {
 function normalizeBot(item: Partial<BotDefinition>, index: number, defaultMaskSensitiveData: boolean): DraftBot {
     const local = text(item.id) || id(`bot-${index}`);
     const username = user(text(item.username));
-    return {local_id: local, bot_id: idValue(text(item.id) || username, local), username, display_name: text(item.display_name), description: text(item.description), base_url: text(item.base_url), auth_mode: botAuth(text(item.auth_mode)), auth_token: text(item.auth_token), model: text(item.model), mode: normalizeMode(item.mode), output_mode: text(item.output_mode) || 'markdown', ocr_prompt: text(item.ocr_prompt), temperature: numRange(item.temperature, 0, 0, 2), max_tokens: optionalPositive(item.max_tokens), top_p: numRange(item.top_p, 1, 0.1, 1), repetition_penalty: numRange(item.repetition_penalty, 1, 0.1, 2), presence_penalty: numRange(item.presence_penalty, 0, -2, 2), frequency_penalty: numRange(item.frequency_penalty, 0, -2, 2), extra_request_json: text(item.extra_request_json), mask_sensitive_data: typeof item.mask_sensitive_data === 'boolean' ? item.mask_sensitive_data : defaultMaskSensitiveData, vllm_base_url: text(item.vllm_base_url), vllm_api_key: text(item.vllm_api_key), vllm_model: text(item.vllm_model), vllm_prompt: text(item.vllm_prompt), vllm_scope: botScope(item.vllm_scope), allowed_teams: Array.isArray(item.allowed_teams) ? split(item.allowed_teams.join(','), true) : [], allowed_channels: Array.isArray(item.allowed_channels) ? split(item.allowed_channels.join(','), true) : [], allowed_users: Array.isArray(item.allowed_users) ? split(item.allowed_users.join(','), true) : []};
+    return {local_id: local, bot_id: idValue(text(item.id) || username, local), username, display_name: text(item.display_name), description: text(item.description), base_url: text(item.base_url), auth_mode: botAuth(text(item.auth_mode)), auth_token: text(item.auth_token), model: text(item.model), mode: normalizeMode(item.mode), output_mode: text(item.output_mode) || 'markdown', show_reasoning: Boolean(item.show_reasoning), thinking_mode: text(item.thinking_mode) || 'default', thinking_parameter: text(item.thinking_parameter), auto_open_thread: item.auto_open_thread !== false, ocr_prompt: text(item.ocr_prompt), temperature: numRange(item.temperature, 0, 0, 2), max_tokens: optionalPositive(item.max_tokens), top_p: numRange(item.top_p, 1, 0.1, 1), repetition_penalty: numRange(item.repetition_penalty, 1, 0.1, 2), presence_penalty: numRange(item.presence_penalty, 0, -2, 2), frequency_penalty: numRange(item.frequency_penalty, 0, -2, 2), extra_request_json: text(item.extra_request_json), mask_sensitive_data: typeof item.mask_sensitive_data === 'boolean' ? item.mask_sensitive_data : defaultMaskSensitiveData, vllm_base_url: text(item.vllm_base_url), vllm_api_key: text(item.vllm_api_key), vllm_model: text(item.vllm_model), vllm_prompt: text(item.vllm_prompt), vllm_scope: botScope(item.vllm_scope), allowed_teams: Array.isArray(item.allowed_teams) ? split(item.allowed_teams.join(','), true) : [], allowed_channels: Array.isArray(item.allowed_channels) ? split(item.allowed_channels.join(','), true) : [], allowed_users: Array.isArray(item.allowed_users) ? split(item.allowed_users.join(','), true) : []};
 }
 
 function effectiveBotBaseURL(config: DraftConfig, bot: DraftBot): string {
@@ -702,7 +735,12 @@ function effectiveBotRefiner(bot: DraftBot): string {
 function validate(config: DraftConfig): string[] {
     const items: string[] = [];
     const usernames = new Set<string>();
-    const reservedRequestKeys = new Set(['model', 'messages', 'temperature', 'max_tokens', 'top_p', 'repetition_penalty', 'presence_penalty', 'frequency_penalty']);
+    for (const bot of config.bots) {
+        if (bot.thinking_mode !== 'default' && !bot.thinking_parameter) {
+            items.push(`${bot.display_name || bot.username}: Thinking 요청 형식을 선택하세요.`);
+        }
+    }
+    const reservedRequestKeys = new Set(['stream', 'model', 'messages', 'temperature', 'max_tokens', 'top_p', 'repetition_penalty', 'presence_penalty', 'frequency_penalty']);
     if (!text(config.service.base_url)) {
         items.push('\uae30\ubcf8 URL\uc740 \ud544\uc218\uc785\ub2c8\ub2e4.');
     }
@@ -773,7 +811,7 @@ function renderConnectionStatus(status: ConnectionStatus): string {
 function emptyBot(existingBots: DraftBot[], defaultMaskSensitiveData: boolean): DraftBot {
     const identity = nextBotIdentity(existingBots);
     const local = id('bot');
-    return {local_id: local, bot_id: identity.id, username: '', display_name: '', description: '', base_url: '', auth_mode: '', auth_token: '', model: '', mode: 'chat', output_mode: 'rich', ocr_prompt: '', temperature: 0, max_tokens: '', top_p: 1, repetition_penalty: 1, presence_penalty: 0, frequency_penalty: 0, extra_request_json: '', mask_sensitive_data: defaultMaskSensitiveData, vllm_base_url: '', vllm_api_key: '', vllm_model: '', vllm_prompt: '', vllm_scope: 'postprocess', allowed_teams: [], allowed_channels: [], allowed_users: []};
+    return {local_id: local, bot_id: identity.id, username: '', display_name: '', description: '', base_url: '', auth_mode: '', auth_token: '', model: '', mode: 'chat', output_mode: 'rich', show_reasoning: false, thinking_mode: 'default', thinking_parameter: '', auto_open_thread: true, ocr_prompt: '', temperature: 0, max_tokens: '', top_p: 1, repetition_penalty: 1, presence_penalty: 0, frequency_penalty: 0, extra_request_json: '', mask_sensitive_data: defaultMaskSensitiveData, vllm_base_url: '', vllm_api_key: '', vllm_model: '', vllm_prompt: '', vllm_scope: 'postprocess', allowed_teams: [], allowed_channels: [], allowed_users: []};
 }
 
 function nextBotIdentity(existingBots: DraftBot[], start = 1): {id: string; username: string; display_name: string} {

@@ -28,5 +28,9 @@ export function splitResponseParts(message: string): ResponseParts {
         reasoning = sections[2].trim();
     }
 
+    if (body.trim().startsWith('**Reasoning**\n\n')) {
+        reasoning = body.trim().slice('**Reasoning**\n\n'.length);
+        body = '';
+    }
     return {body: body.trim(), reasoning, correlationID, duration};
 }

@@ -29,13 +29,15 @@ It supports:
 
 ## Rich Responses and Diagrams
 
-Set a bot's `output_mode` to `rich` (the default for new chat bots) to get answers formatted like modern AI assistants:
+Chat and multimodal bots using `markdown` or `rich` can choose a diagram whenever it helps explain an answer, without an explicit drawing request. `rich` is the default for new chat bots:
 
 - The plugin appends formatting guidance to the system prompt so the model uses short headings, lists, tables and, when it helps, one Mermaid diagram (flowchart, sequence, state, timeline, mindmap, pie, gantt, ER, xychart).
 - The webapp renders ```` ```mermaid ```` fences with the bundled Mermaid 12 (works offline) as diagrams themed to the user's Mattermost light/dark theme, with copy, code view, zoom and SVG download.
-- Model metadata (model, response time, correlation ID) moves to a small footer under the answer, and separated reasoning is collapsed behind "생각 과정 보기".
+- Model metadata (model, response time, correlation ID) moves to a small footer under the answer, and reasoning is hidden by default. Administrators can enable a collapsed "생각 과정 보기" section per bot.
 
 Mobile clients do not run webapp plugins, so they still show the plain Markdown and Mermaid source.
+
+See the [v0.3.0 administrator guide and validation notes](docs/operations/0.3.0-chat-experience.md) for thinking generation controls, automatic reply threads, compatibility and limitations.
 
 ## Request Shape
 

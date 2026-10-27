@@ -17,10 +17,10 @@ test('splitResponseParts separates answer and reasoning', () => {
     expect(parts.duration).toBe('');
 });
 
-test('splitResponseParts leaves plain messages untouched', () => {
+test('splitResponseParts never treats reasoning-only output as the answer', () => {
     expect(splitResponseParts('**Reasoning**\n\n생각만 있음')).toEqual({
-        body: '**Reasoning**\n\n생각만 있음',
-        reasoning: '',
+        body: '',
+        reasoning: '생각만 있음',
         correlationID: '',
         duration: '',
     });

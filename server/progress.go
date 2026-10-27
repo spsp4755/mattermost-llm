@@ -80,6 +80,10 @@ func (p *Plugin) upsertBotPost(channel *model.Channel, rootID string, account bo
 		return nil, err
 	}
 
+	if props == nil {
+		props = map[string]any{}
+	}
+	props["doc2vllm_show_reasoning"] = account.Definition.ShowReasoning
 	message, props = sanitizeBotPostPayload(message, props)
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -260,6 +264,9 @@ func (p *Plugin) updateProgressPost(progress *botProgressPost, stage, detail, pa
 	}
 
 	message := buildBotProgressMessage(stage, detail, partial, progress.correlationID, time.Since(startedAt))
+	if strings.TrimSpace(partial) != "" {
+		message = buildBotResponseMessage(partial, progress.correlationID, time.Since(startedAt))
+	}
 	if !force {
 		if message == progress.lastMessage {
 			return nil
@@ -277,6 +284,7 @@ func (p *Plugin) updateProgressPost(progress *botProgressPost, stage, detail, pa
 		"doc2vllm_progress":       "true",
 		"doc2vllm_ocr":            "true",
 		"doc2vllm_stage":          strings.TrimSpace(stage),
+		"doc2vllm_streaming":      fmt.Sprint(strings.TrimSpace(partial) != ""),
 	})
 	if err != nil {
 		return err

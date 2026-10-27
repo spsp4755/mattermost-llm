@@ -17,6 +17,10 @@ export type BotDefinition = {
     model?: string;
     mode?: string;
     output_mode?: string;
+    show_reasoning?: boolean;
+    thinking_mode?: string;
+    thinking_parameter?: string;
+    auto_open_thread?: boolean;
     ocr_prompt?: string;
     temperature?: number;
     max_tokens?: number;
